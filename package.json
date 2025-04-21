@@ -1,7 +1,13 @@
 {
   "name": "nullunit-backend",
-  "module": "index.ts",
+  "module": "src/index.ts",
   "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "lint": "eslint . --ext .ts",
+    "format": "prettier --write ."
+  },
   "devDependencies": {
     "@types/bun": "latest",
     "@typescript-eslint/eslint-plugin": "^8.30.1",
