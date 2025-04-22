@@ -2,6 +2,7 @@ import { Elysia } from 'elysia';
 import { supabase } from './config/supabase';
 import { memberRoutes } from './routes/memberRoutes';
 import { authRoutes } from './routes/authRoutes';
+import { articleRoutes } from './routes/articleRoutes';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
 
@@ -28,9 +29,9 @@ const app = new Elysia()
                     timestamp: new Date().toISOString()
                 };
             }
-        })
-        .use(authRoutes)
+        })        .use(authRoutes)
         .use(memberRoutes)
+        .use(articleRoutes)
     )
     .listen(PORT);
 

@@ -4,11 +4,12 @@ import { supabase } from '../config/supabase';
 import { uploadAvatar, validateImage } from '../config/storage';
 import { sanitizeMemberData } from '../utils/sanitizer';
 
-interface CreateMemberBody {
+interface MemberInput {
+    id: string;
     username: string;
     role: string;
     bio: string;
-    avatar?: Buffer;
+    avatar_url?: string;
 }
 
 /**
@@ -88,13 +89,16 @@ export const memberRoutes = new Elysia({ prefix: '/members' })
                         return { error: imageValidation.error };
                     }
                     avatarUrl = await uploadAvatar(body.avatar, sanitizedData.username);
-                }
-
-                const member = await MemberService.create({
+                }                
+                const memberInput: MemberInput = {
                     id: user.id,
-                    ...sanitizedData,
+                    username: sanitizedData.username,
+                    role: sanitizedData.role,
+                    bio: sanitizedData.bio,
                     avatar_url: avatarUrl
-                });
+                };
+                
+                const member = await MemberService.create(memberInput);
 
                 return member;
             } catch (validationError: unknown) {
