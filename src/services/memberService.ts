@@ -1,5 +1,5 @@
 import { supabase } from '../config/supabase';
-import { uploadAvatar, deleteOldAvatar } from '../config/storage';
+import { uploadAvatar, deleteOldAvatar, validateImage } from '../config/storage';
 import { Member } from '../types/database';
 
 /**
@@ -115,8 +115,7 @@ export class MemberService {
 
     /**
      * @description Delete a member and their avatar
-     */
-    static async delete(username: string): Promise<void> {
+     */    static async delete(username: string): Promise<void> {
         const member = await this.getByUsername(username);
         
         const { error } = await supabase
@@ -130,5 +129,16 @@ export class MemberService {
         if (member.avatar_url) {
             await deleteOldAvatar(member.avatar_url);
         }
+    }
+
+    /**
+     * @description Handle avatar upload and cleanup old avatar if exists
+     */
+    static async handleAvatar(avatar: Buffer, username: string): Promise<string> {
+        const imageValidation = validateImage(avatar);
+        if (!imageValidation.isValid) {
+            throw new Error(imageValidation.error || 'Invalid image format');
+        }
+        return await uploadAvatar(avatar, username);
     }
 }
