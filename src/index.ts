@@ -1,6 +1,7 @@
 import { Elysia } from 'elysia';
 import { supabase } from './config/supabase';
 import { memberRoutes } from './routes/memberRoutes';
+import { authRoutes } from './routes/authRoutes';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
 
@@ -9,27 +10,27 @@ const app = new Elysia()
         status: 'online',
         message: 'NullUnit API is running',
         timestamp: new Date().toISOString()
-    }))  
-    .group('/api', app => app
-            .get('/health', async () => {
-                try {
-                    const { data, error } = await supabase.from('members').select('count');
-                    if (error) throw error;
-                    return {
+    }))    .group('/api', app => app
+        .get('/health', async () => {
+            try {
+                const { data, error } = await supabase.from('members').select('count');
+                if (error) throw error;
+                return {
                     status: 'healthy',
                     database: 'connected',
                     timestamp: new Date().toISOString()
-                    };
-                } catch (error) {
-                    return {
+                };
+            } catch (error) {
+                return {
                     status: 'error',
                     database: 'disconnected',
                     error: error instanceof Error ? error.message : 'Unknown error',
                     timestamp: new Date().toISOString()
-                    };
-                }
-            })
-            .use(memberRoutes)
+                };
+            }
+        })
+        .use(authRoutes)
+        .use(memberRoutes)
     )
     .listen(PORT);
 

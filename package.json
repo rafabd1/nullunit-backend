@@ -23,6 +23,7 @@
     "@elysiajs/swagger": "^1.2.2",
     "@supabase/supabase-js": "^2.49.4",
     "elysia": "^1.2.25",
+    "html-escaper": "^3.0.3",
     "zod": "^3.24.3"
   }
 }
