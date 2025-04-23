@@ -53,6 +53,18 @@ export class ArticleService {
      * @description Get a specific article module by its slug
      */
     static async getModuleBySlug(slug: string): Promise<ArticleModule | null> {
+        const { data: moduleExists } = await supabase
+            .from('article_modules')
+            .select('id')
+            .eq('slug', slug)
+            .maybeSingle();
+
+        if (!moduleExists) {
+            return null;
+        }
+
+        console.log('Found module ID:', moduleExists.id);
+
         const { data, error } = await supabase
             .from('article_modules')
             .select(this.MODULE_QUERY)
@@ -60,10 +72,6 @@ export class ArticleService {
             .single();
 
         if (error) {
-            if (error.code === 'PGRST116') {
-                console.log('No module found with slug:', slug);
-                return null;
-            }
             throw new Error(`Failed to fetch article module: ${error.message}`);
         }
 
@@ -147,5 +155,36 @@ export class ArticleService {
             .eq('id', moduleId);
 
         if (error) throw new Error(`Failed to delete article module: ${error.message}`);
+    }
+
+    /**
+     * @description Update a sub-article
+     */
+    static async updateSubArticle(articleId: string, input: { 
+        title?: string;
+        content?: string;
+        slug?: string;
+    }): Promise<SubArticle> {
+        const { data, error } = await supabase
+            .from('sub_articles')
+            .update(input)
+            .eq('id', articleId)
+            .select()
+            .single();
+
+        if (error) throw new Error(`Failed to update sub-article: ${error.message}`);
+        return data;
+    }
+
+    /**
+     * @description Delete a sub-article
+     */
+    static async deleteSubArticle(articleId: string): Promise<void> {
+        const { error } = await supabase
+            .from('sub_articles')
+            .delete()
+            .eq('id', articleId);
+
+        if (error) throw new Error(`Failed to delete sub-article: ${error.message}`);
     }
 }
