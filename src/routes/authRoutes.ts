@@ -12,12 +12,30 @@ const authCredentialsSchema = t.Object({
     password: t.String({ minLength: 8 })
 });
 
-export const authRoutes = new Elysia({ prefix: '/auth' })
+/**
+ * @description Auth routes for handling authentication flow
+ */
+export const authRoutes = new Elysia({ prefix: '/auth' })    .get('/callback', async ({ query, set }) => {
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+        const { error } = query;
+
+        set.status = 302;
+        set.headers = {
+            'Location': error 
+                ? `${frontendUrl}/auth/error?error=${error}`
+                : `${frontendUrl}/auth/success`
+        };
+        
+        return null;
+    })
     .post('/signup', async ({ body, set }: RouteContext & { body: AuthBody }) => {
         try {
             const { data, error } = await supabase.auth.signUp({
                 email: body.email,
-                password: body.password
+                password: body.password,
+                options: {
+                    emailRedirectTo: `${process.env.API_URL || 'http://localhost:3001'}/api/auth/callback`
+                }
             });
 
             if (error) throw error;

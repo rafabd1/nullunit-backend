@@ -39,13 +39,13 @@ const memberSchema = t.Object({
 const memberInputSchema = t.Object({
     username: t.String({ minLength: 3, maxLength: 30 }),
     role: t.String({ minLength: 2, maxLength: 50 }),
-    bio: t.String({ minLength: 10, maxLength: 500 }),
+    bio: t.String({ maxLength: 500 }),
     avatar: t.Optional(t.Any())
 });
 
 const memberUpdateSchema = t.Object({
     role: t.Optional(t.String({ minLength: 2, maxLength: 50 })),
-    bio: t.Optional(t.String({ minLength: 10, maxLength: 500 })),
+    bio: t.Optional(t.String({ maxLength: 500 })),
     avatar: t.Optional(t.Any())
 });
 
