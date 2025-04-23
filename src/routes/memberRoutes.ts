@@ -26,30 +26,31 @@ interface MemberDbInput {
     avatar_url?: string;
 }
 
+const memberSchema = t.Object({
+    id: t.String(),
+    username: t.String(),
+    role: t.String(),
+    bio: t.String(),
+    avatar_url: t.Optional(t.String()),
+    created_at: t.String(),
+    updated_at: t.String()
+});
+
+const memberInputSchema = t.Object({
+    username: t.String({ minLength: 3, maxLength: 30 }),
+    role: t.String({ minLength: 2, maxLength: 50 }),
+    bio: t.String({ minLength: 10, maxLength: 500 }),
+    avatar: t.Optional(t.Any())
+});
+
+const memberUpdateSchema = t.Object({
+    role: t.Optional(t.String({ minLength: 2, maxLength: 50 })),
+    bio: t.Optional(t.String({ minLength: 10, maxLength: 500 })),
+    avatar: t.Optional(t.Any())
+});
+
 export const memberRoutes = new Elysia({ prefix: '/members' })
-    .model({
-        member: t.Object({
-            id: t.String(),
-            username: t.String(),
-            role: t.String(),
-            bio: t.String(),
-            avatar_url: t.Optional(t.String()),
-            created_at: t.String(),
-            updated_at: t.String()
-        }),
-        memberInput: t.Object({
-            username: t.String({ minLength: 3, maxLength: 30 }),
-            role: t.String({ minLength: 2, maxLength: 50 }),
-            bio: t.String({ minLength: 10, maxLength: 500 }),
-            avatar: t.Optional(t.Any())
-        }),
-        memberUpdate: t.Object({
-            role: t.Optional(t.String({ minLength: 2, maxLength: 50 })),
-            bio: t.Optional(t.String({ minLength: 10, maxLength: 500 })),
-            avatar: t.Optional(t.Any())
-        })
-    })
-    .get('/', {
+    .get('/', () => MemberService.getAll(), {
         detail: {
             tags: ['members'],
             description: 'Get all members',
@@ -66,12 +67,11 @@ export const memberRoutes = new Elysia({ prefix: '/members' })
                     }
                 }
             }
-        },
-        handler: async () => {
-            return await MemberService.getAll();
         }
     })
-    .get('/:username', {
+    .get('/:username', async ({ params }: RouteContext & { params: { username: string } }) => {
+        return await MemberService.getByUsername(params.username);
+    }, {
         detail: {
             tags: ['members'],
             description: 'Get member by username',
@@ -80,7 +80,7 @@ export const memberRoutes = new Elysia({ prefix: '/members' })
                     description: 'Member details',
                     content: {
                         'application/json': {
-                            schema: { $ref: '#/components/schemas/member' }
+                            schema: memberSchema
                         }
                     }
                 },
@@ -88,12 +88,44 @@ export const memberRoutes = new Elysia({ prefix: '/members' })
                     description: 'Member not found'
                 }
             }
-        },
-        handler: async ({ params }: RouteContext & { params: { username: string } }) => {
-            return await MemberService.getByUsername(params.username);
         }
     })
-    .post('/', {
+    .post('/', async ({ body, request, set }: RouteContext & { body: MemberInputData }) => {
+        return auth(async ({ user, set }: AuthenticatedContext) => {
+            try {
+                const sanitizedData = sanitizeMemberData({
+                    username: body.username,
+                    role: body.role,
+                    bio: body.bio
+                });
+
+                let avatarUrl: string | undefined;
+                if (body.avatar && body.avatar instanceof Buffer) {
+                    avatarUrl = await MemberService.handleAvatar(body.avatar, sanitizedData.username);
+                }
+
+                const memberInput: MemberDbInput = {
+                    id: user.id,
+                    username: sanitizedData.username,
+                    role: sanitizedData.role,
+                    bio: sanitizedData.bio,
+                    avatar_url: avatarUrl
+                };
+                
+                const member = await MemberService.create(memberInput);
+                set.status = 201;
+                return member;
+            } catch (validationError: unknown) {
+                set.status = 400;
+                return { 
+                    error: 'Validation failed',
+                    message: validationError instanceof Error ? 
+                        validationError.message : 'Invalid input data'
+                };
+            }
+        })({ body, request, set });
+    }, {
+        body: memberInputSchema,
         detail: {
             tags: ['members'],
             description: 'Create new member',
@@ -103,7 +135,7 @@ export const memberRoutes = new Elysia({ prefix: '/members' })
                     description: 'Member created successfully',
                     content: {
                         'application/json': {
-                            schema: { $ref: '#/components/schemas/member' }
+                            schema: memberSchema
                         }
                     }
                 },
@@ -114,45 +146,47 @@ export const memberRoutes = new Elysia({ prefix: '/members' })
                     description: 'Unauthorized'
                 }
             }
-        },
-        body: 'memberInput',
-        handler: async ({ body, request, set }: RouteContext & { body: MemberInputData }) => {
-            return auth(async ({ user, set }: AuthenticatedContext) => {
-                try {
-                    const sanitizedData = sanitizeMemberData({
-                        username: body.username,
-                        role: body.role,
-                        bio: body.bio
-                    });
-
-                    let avatarUrl: string | undefined;
-                    if (body.avatar && body.avatar instanceof Buffer) {
-                        avatarUrl = await MemberService.handleAvatar(body.avatar, sanitizedData.username);
-                    }
-
-                    const memberInput: MemberDbInput = {
-                        id: user.id,
-                        username: sanitizedData.username,
-                        role: sanitizedData.role,
-                        bio: sanitizedData.bio,
-                        avatar_url: avatarUrl
-                    };
-                    
-                    const member = await MemberService.create(memberInput);
-                    set.status = 201;
-                    return member;
-                } catch (validationError: unknown) {
-                    set.status = 400;
-                    return { 
-                        error: 'Validation failed',
-                        message: validationError instanceof Error ? 
-                            validationError.message : 'Invalid input data'
-                    };
-                }
-            })({ body, request, set });
         }
     })
-    .put('/:username', {
+    .put('/:username', async ({ params, body, request, set }: RouteContext & { 
+        params: { username: string }, 
+        body: MemberUpdateData 
+    }) => {
+        return auth(async ({ user, set }: AuthenticatedContext) => {
+            try {
+                const currentMember = await MemberService.getByUsername(params.username);
+                if (currentMember.id !== user.id) {
+                    set.status = 403;
+                    return { error: 'Forbidden: You can only update your own profile' };
+                }
+
+                const sanitizedData = sanitizeMemberData({
+                    role: body.role,
+                    bio: body.bio
+                });
+
+                let avatarUrl: string | undefined;
+                if (body.avatar && body.avatar instanceof Buffer) {
+                    avatarUrl = await MemberService.handleAvatar(body.avatar, params.username);
+                }
+
+                const updatedMember = await MemberService.update(params.username, {
+                    ...sanitizedData,
+                    ...(avatarUrl && { avatar_url: avatarUrl })
+                });
+
+                return updatedMember;
+            } catch (validationError: unknown) {
+                set.status = 400;
+                return { 
+                    error: 'Validation failed',
+                    message: validationError instanceof Error ? 
+                        validationError.message : 'Invalid input data'
+                };
+            }
+        })({ body, request, set });
+    }, {
+        body: memberUpdateSchema,
         detail: {
             tags: ['members'],
             description: 'Update member',
@@ -162,7 +196,7 @@ export const memberRoutes = new Elysia({ prefix: '/members' })
                     description: 'Member updated successfully',
                     content: {
                         'application/json': {
-                            schema: { $ref: '#/components/schemas/member' }
+                            schema: memberSchema
                         }
                     }
                 },
@@ -176,45 +210,31 @@ export const memberRoutes = new Elysia({ prefix: '/members' })
                     description: 'Forbidden - Can only update own profile'
                 }
             }
-        },
-        body: 'memberUpdate',
-        handler: async ({ params, body, request, set }: RouteContext & { params: { username: string }, body: MemberUpdateData }) => {
-            return auth(async ({ user, set }: AuthenticatedContext) => {
-                try {
-                    const currentMember = await MemberService.getByUsername(params.username);
-                    if (currentMember.id !== user.id) {
-                        set.status = 403;
-                        return { error: 'Forbidden: You can only update your own profile' };
-                    }
-
-                    const sanitizedData = sanitizeMemberData({
-                        role: body.role,
-                        bio: body.bio
-                    });
-
-                    let avatarUrl: string | undefined;
-                    if (body.avatar && body.avatar instanceof Buffer) {
-                        avatarUrl = await MemberService.handleAvatar(body.avatar, params.username);
-                    }
-
-                    const updatedMember = await MemberService.update(params.username, {
-                        ...sanitizedData,
-                        ...(avatarUrl && { avatar_url: avatarUrl })
-                    });
-
-                    return updatedMember;
-                } catch (validationError: unknown) {
-                    set.status = 400;
-                    return { 
-                        error: 'Validation failed',
-                        message: validationError instanceof Error ? 
-                            validationError.message : 'Invalid input data'
-                    };
-                }
-            })({ body, request, set });
         }
     })
-    .delete('/:username', {
+    .delete('/:username', async ({ params, request, set }: RouteContext & { 
+        params: { username: string } 
+    }) => {
+        return auth(async ({ user, set }: AuthenticatedContext) => {
+            try {
+                const currentMember = await MemberService.getByUsername(params.username);
+                if (currentMember.id !== user.id) {
+                    set.status = 403;
+                    return { error: 'Forbidden: You can only delete your own profile' };
+                }
+
+                await MemberService.delete(params.username);
+                return {
+                    status: 'success',
+                    message: 'Member deleted successfully',
+                    timestamp: new Date().toISOString()
+                };
+            } catch (error) {
+                set.status = 500;
+                return { error: 'Failed to delete member' };
+            }
+        })({ request, set });
+    }, {
         detail: {
             tags: ['members'],
             description: 'Delete member',
@@ -242,26 +262,5 @@ export const memberRoutes = new Elysia({ prefix: '/members' })
                     description: 'Forbidden - Admin access required'
                 }
             }
-        },
-        handler: async ({ params, request, set }: RouteContext & { params: { username: string } }) => {
-            return auth(async ({ user, set }: AuthenticatedContext) => {
-                try {
-                    const currentMember = await MemberService.getByUsername(params.username);
-                    if (currentMember.id !== user.id) {
-                        set.status = 403;
-                        return { error: 'Forbidden: You can only delete your own profile' };
-                    }
-
-                    await MemberService.delete(params.username);
-                    return {
-                        status: 'success',
-                        message: 'Member deleted successfully',
-                        timestamp: new Date().toISOString()
-                    };
-                } catch (error) {
-                    set.status = 500;
-                    return { error: 'Failed to delete member' };
-                }
-            })({ request, set });
         }
     });
