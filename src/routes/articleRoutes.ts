@@ -3,52 +3,8 @@ import { ArticleService } from '../services/articleService';
 import { auth } from '../middlewares/auth';
 import { sanitizeModuleData, sanitizeSubArticleData } from '../utils/articleSanitizer';
 import { RouteContext, AuthenticatedContext } from '../types/routes';
-
-interface ModuleInputData {
-    title: string;
-    description?: string;
-    slug?: string;
-}
-
-interface SubArticleInputData {
-    title: string;
-    content: string;
-    slug?: string;
-}
-
-const articleModuleSchema = t.Object({
-    id: t.String(),
-    member_id: t.String(),
-    slug: t.String(),
-    title: t.String(),
-    description: t.Optional(t.String()),
-    created_at: t.String(),
-    updated_at: t.String()
-});
-
-const subArticleSchema = t.Object({
-    id: t.String(),
-    module_id: t.String(),
-    author_id: t.String(),
-    slug: t.String(),
-    title: t.String(),
-    content: t.String(),
-    published_date: t.String(),
-    created_at: t.String(),
-    updated_at: t.String()
-});
-
-const moduleInputSchema = t.Object({
-    title: t.String({ minLength: 3, maxLength: 100 }),
-    description: t.Optional(t.String({ maxLength: 500 })),
-    slug: t.Optional(t.String())
-});
-
-const subArticleInputSchema = t.Object({
-    title: t.String({ minLength: 3, maxLength: 100 }),
-    content: t.String({ minLength: 50 }),
-    slug: t.Optional(t.String())
-});
+import { ModuleInputData, SubArticleInputData } from '../types/articleTypes';
+import { articleModuleSchema, subArticleSchema, moduleInputSchema, subArticleInputSchema } from '../schemas/articleSchemas';
 
 export const articleRoutes = new Elysia({ prefix: '/articles' })
     .get('/', async () => {

@@ -4,50 +4,8 @@ import { auth } from '../middlewares/auth';
 import { sanitizeMemberData } from '../utils/sanitizer';
 import { validateImage } from '../config/storage';
 import { RouteContext, AuthenticatedContext } from '../types/routes';
-
-interface MemberInputData {
-    username: string;
-    role: string;
-    bio: string;
-    avatar?: Buffer;
-}
-
-interface MemberUpdateData {
-    role?: string;
-    bio?: string;
-    avatar?: Buffer;
-}
-
-interface MemberDbInput {
-    id: string;
-    username: string;
-    role: string;
-    bio: string;
-    avatar_url?: string;
-}
-
-const memberSchema = t.Object({
-    id: t.String(),
-    username: t.String(),
-    role: t.String(),
-    bio: t.String(),
-    avatar_url: t.Optional(t.String()),
-    created_at: t.String(),
-    updated_at: t.String()
-});
-
-const memberInputSchema = t.Object({
-    username: t.String({ minLength: 3, maxLength: 30 }),
-    role: t.String({ minLength: 2, maxLength: 50 }),
-    bio: t.String({ maxLength: 500 }),
-    avatar: t.Optional(t.Any())
-});
-
-const memberUpdateSchema = t.Object({
-    role: t.Optional(t.String({ minLength: 2, maxLength: 50 })),
-    bio: t.Optional(t.String({ maxLength: 500 })),
-    avatar: t.Optional(t.Any())
-});
+import { memberSchema, memberInputSchema, memberUpdateSchema } from '../schemas/memberSchemas';
+import { MemberInputData, MemberUpdateData, MemberDbInput } from '../types/memberTypes';
 
 export const memberRoutes = new Elysia({ prefix: '/members' })
     .get('/', () => MemberService.getAll(), {
@@ -100,8 +58,10 @@ export const memberRoutes = new Elysia({ prefix: '/members' })
                 });
 
                 let avatarUrl: string | undefined;
-                if (body.avatar && body.avatar instanceof Buffer) {
-                    avatarUrl = await MemberService.handleAvatar(body.avatar, sanitizedData.username);
+                if (body.avatar && body.avatar instanceof File) {
+                    const arrayBuffer = await body.avatar.arrayBuffer();
+                    const buffer = Buffer.from(arrayBuffer);
+                    avatarUrl = await MemberService.handleAvatar(buffer, sanitizedData.username);
                 }
 
                 const memberInput: MemberDbInput = {
@@ -166,8 +126,10 @@ export const memberRoutes = new Elysia({ prefix: '/members' })
                 });
 
                 let avatarUrl: string | undefined;
-                if (body.avatar && body.avatar instanceof Buffer) {
-                    avatarUrl = await MemberService.handleAvatar(body.avatar, params.username);
+                if (body.avatar && body.avatar instanceof File) {
+                    const arrayBuffer = await body.avatar.arrayBuffer();
+                    const buffer = Buffer.from(arrayBuffer);
+                    avatarUrl = await MemberService.handleAvatar(buffer, params.username);
                 }
 
                 const updatedMember = await MemberService.update(params.username, {
