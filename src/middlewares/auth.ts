@@ -1,5 +1,7 @@
 import { User } from '@supabase/supabase-js';
 import { supabase } from '../config/supabase';
+import { UserPermission } from '../types/permissions';
+import { MemberWithPermission } from '../types/memberTypes';
 
 type AuthContext = {
     request: Request;
@@ -7,6 +9,16 @@ type AuthContext = {
     user: User;
     body?: any;
     params?: any;
+};
+
+type PermissionLevel = {
+    [key in UserPermission]: number;
+};
+
+const permissionLevels: PermissionLevel = {
+    [UserPermission.ADMIN]: 3,
+    [UserPermission.AUTHOR]: 2,
+    [UserPermission.GUEST]: 1
 };
 
 /**
@@ -34,37 +46,42 @@ export const auth = (handler: (context: AuthContext) => Promise<any>) => {
 };
 
 /**
- * @description Higher-order function for requiring admin role
+ * @description Higher-order function for requiring specific permission level
  */
-export const requireAdmin = (handler: (context: AuthContext) => Promise<any>) => {
-    return async (ctx: { request: Request; set: { status: number }; [key: string]: any }) => {
-        return auth(async (authContext: AuthContext) => {
-            const { data } = await supabase
-                .from('members')
-                .select('role')
-                .eq('id', authContext.user.id)
-                .single();
+export const requirePermission = (requiredPermission: UserPermission) => {
+    return (handler: (context: AuthContext) => Promise<any>) => {
+        return async (ctx: { request: Request; set: { status: number }; [key: string]: any }) => {
+            return auth(async (authContext: AuthContext) => {
+                const { data: member, error } = await supabase
+                    .from('members')
+                    .select('id, permission')
+                    .eq('id', authContext.user.id)
+                    .single();
 
-            if (data?.role !== 'admin') {
-                authContext.set.status = 403;
-                throw new Error('Forbidden');
-            }
+                if (error || !member) {
+                    authContext.set.status = 404;
+                    throw new Error('Member not found');
+                }
 
-            return handler(authContext);
-        })(ctx);
+                const typedMember = member as MemberWithPermission;
+                
+                if (permissionLevels[typedMember.permission] < permissionLevels[requiredPermission]) {
+                    authContext.set.status = 403;
+                    throw new Error('Insufficient permissions');
+                }
+
+                return handler(authContext);
+            })(ctx);
+        };
     };
 };
 
 /**
- * @description Helper to check if user has admin role
+ * @description Shorthand for requiring admin permission
  */
-export const isAdmin = async (userId: string) => {
-    const { data, error } = await supabase
-        .from('members')
-        .select('role')
-        .eq('id', userId)
-        .single();
+export const requireAdmin = requirePermission(UserPermission.ADMIN);
 
-    if (error) throw error;
-    return data?.role === 'admin';
-};
+/**
+ * @description Shorthand for requiring author permission
+ */
+export const requireAuthor = requirePermission(UserPermission.AUTHOR);

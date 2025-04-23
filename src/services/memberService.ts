@@ -1,144 +1,123 @@
 import { supabase } from '../config/supabase';
-import { uploadAvatar, deleteOldAvatar, validateImage } from '../config/storage';
-import { Member } from '../types/database';
-
-/**
- * @description Interface for member creation
- */
-interface CreateMemberInput {
-    id: string;
-    username: string;
-    role: string;
-    bio: string;
-    avatar_url?: string;
-}
+import { validateImage } from '../config/storage';
+import { MemberDbInput, MemberResponse } from '../types/memberTypes';
+import { UserPermission } from '../types/permissions';
 
 /**
  * @description Service layer for member management
  */
 export class MemberService {
-    private static readonly SELECT_QUERY = `
-        *,
-        member_social_links (
-            id,
-            platform,
-            url
-        )`;
-
     /**
-     * @description Get all members with their social links
+     * @description Get all members
      */
-    static async getAll(): Promise<Member[]> {
+    static async getAll(): Promise<MemberResponse[]> {
         const { data, error } = await supabase
             .from('members')
-            .select(this.SELECT_QUERY)
-            .order('username');
+            .select('*')
+            .order('created_at', { ascending: false });
 
-        if (error) throw new Error(`Failed to fetch members: ${error.message}`);
+        if (error) throw error;
         return data;
     }
 
     /**
-     * @description Get a member by username with their social links
+     * @description Get member by username
      */
-    static async getByUsername(username: string): Promise<Member> {
+    static async getByUsername(username: string): Promise<MemberResponse | null> {
         const { data, error } = await supabase
             .from('members')
-            .select(this.SELECT_QUERY)
+            .select('*')
             .eq('username', username)
             .single();
 
-        if (error || !data) throw new Error('Member not found');
+        if (error && error.code !== 'PGRST116') throw error;
         return data;
     }
 
     /**
-     * @description Create a new member with their user ID
+     * @description Create new member profile
      */
-    static async create(input: CreateMemberInput): Promise<Member> {
+    static async create(input: MemberDbInput): Promise<MemberResponse> {
+        const { data: existing } = await supabase
+            .from('members')
+            .select('username')
+            .eq('username', input.username)
+            .single();
+
+        if (existing) {
+            throw new Error('Username already taken');
+        }
+
         const { data, error } = await supabase
             .from('members')
             .insert({
-                id: input.id,
-                username: input.username,
-                role: input.role,
-                bio: input.bio,
-                avatar_url: input.avatar_url,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
+                ...input,
+                permission: input.permission || UserPermission.GUEST
             })
-            .select(this.SELECT_QUERY)
+            .select()
             .single();
 
-        if (error) {
-            // Cleanup avatar if member creation fails
-            if (input.avatar_url) {
-                await deleteOldAvatar(input.avatar_url);
-            }
-            throw new Error(`Failed to create member: ${error.message}`);
-        }
-
+        if (error) throw error;
         return data;
     }
 
     /**
-     * @description Update a member's information
+     * @description Update member profile
      */
-    static async update(username: string, updates: Partial<Member>): Promise<Member> {
-        const currentMember = await this.getByUsername(username);
+    static async update(id: string, updates: Partial<MemberDbInput>): Promise<MemberResponse> {
+        // Não permitir atualização de permission através deste método
+        const { permission, ...safeUpdates } = updates;
         
         const { data, error } = await supabase
             .from('members')
-            .update({
-                ...updates,
-                updated_at: new Date().toISOString()
-            })
-            .eq('username', username)
-            .select(this.SELECT_QUERY)
+            .update(safeUpdates)
+            .eq('id', id)
+            .select()
             .single();
 
-        if (error) {
-            // Cleanup new avatar if update fails
-            if (updates.avatar_url) {
-                await deleteOldAvatar(updates.avatar_url);
-            }
-            throw new Error(`Failed to update member: ${error.message}`);
-        }
-
-        // Delete old avatar if new one was uploaded successfully
-        if (updates.avatar_url && currentMember.avatar_url) {
-            await deleteOldAvatar(currentMember.avatar_url);
-        }
-
+        if (error) throw error;
         return data;
     }
 
     /**
-     * @description Delete a member and their avatar
-     */    static async delete(username: string): Promise<void> {
-        const member = await this.getByUsername(username);
-        
-        const { error } = await supabase
+     * @description Update member permission
+     * This is a separate method that should only be called by admin routes
+     */
+    static async updatePermission(id: string, newPermission: UserPermission): Promise<MemberResponse> {
+        const { data, error } = await supabase
             .from('members')
-            .delete()
-            .eq('username', username);
+            .update({ permission: newPermission })
+            .eq('id', id)
+            .select()
+            .single();
 
-        if (error) throw new Error(`Failed to delete member: ${error.message}`);
-
-        // Delete avatar after member is deleted successfully
-        if (member.avatar_url) {
-            await deleteOldAvatar(member.avatar_url);
-        }
+        if (error) throw error;
+        return data;
     }
 
     /**
-     * @description Handle avatar upload and cleanup old avatar if exists
+     * @description Handle avatar upload
      */
-    static async handleAvatar(avatar: Buffer, username: string): Promise<string> {
-        const imageValidation = validateImage(avatar);
-        if (!imageValidation.isValid) {
-            throw new Error(imageValidation.error || 'Invalid image format');
+    static async handleAvatar(file: Buffer, username: string): Promise<string> {
+        const isValid = await validateImage(file);
+        if (!isValid) {
+            throw new Error('Invalid image file');
         }
-        return await uploadAvatar(avatar, username);
+
+        const filePath = `avatars/${username}`;
+        const { error: uploadError } = await supabase.storage
+            .from('members')
+            .upload(filePath, file, {
+                contentType: 'image/jpeg',
+                upsert: true
+            });
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+            .from('members')
+            .getPublicUrl(filePath);
+
+        return publicUrl;
     }
 }

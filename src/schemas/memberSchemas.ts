@@ -1,35 +1,80 @@
 // src/schemas/memberSchemas.ts
 import { t } from 'elysia';
+import { UserPermission } from '../types/permissions';
 
-// Schema for the member data returned by the API
 export const memberSchema = t.Object({
-    id: t.String(),
-    username: t.String(),
-    role: t.String(),
-    bio: t.String(),
-    avatar_url: t.Optional(t.String()),
-    created_at: t.String(), // Consider t.Date() if you prefer Date objects
-    updated_at: t.String()  // Consider t.Date()
+    id: t.String({
+        description: 'Member unique identifier'
+    }),
+    username: t.String({
+        description: 'Member username'
+    }),
+    role: t.String({
+        description: 'Member role'
+    }),
+    permission: t.Enum(UserPermission, {
+        description: 'Member permission level'
+    }),
+    bio: t.String({
+        description: 'Member biography'
+    }),
+    avatar_url: t.Optional(t.String({
+        description: 'Member avatar URL'
+    })),
+    created_at: t.String({
+        description: 'Creation timestamp'
+    }),
+    updated_at: t.String({
+        description: 'Last update timestamp'
+    })
 });
 
-// Schema for validating member creation input (request body)
 export const memberInputSchema = t.Object({
-    username: t.String({ minLength: 3, maxLength: 30 }),
-    role: t.String({ minLength: 2, maxLength: 50 }),
-    bio: t.String({ maxLength: 500 }),
-    avatar: t.Optional(t.File({ type: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'], maxSize: '5m' })) // Use t.File for uploads
+    username: t.String({ 
+        minLength: 3, 
+        maxLength: 30,
+        description: 'Username must be between 3 and 30 characters'
+    }),
+    role: t.String({ 
+        minLength: 2, 
+        maxLength: 50,
+        description: 'Role description'
+    }),
+    bio: t.String({ 
+        maxLength: 500,
+        description: 'Member biography'
+    }),
+    avatar: t.Optional(t.Any({
+        description: 'Member avatar file'
+    }))
 });
 
-// Schema for validating member update input (request body)
 export const memberUpdateSchema = t.Object({
-    role: t.Optional(t.String({ minLength: 2, maxLength: 50 })),
-    bio: t.Optional(t.String({ maxLength: 500 })),
-    // Allow avatar to be Optional File OR Optional empty string
-    avatar: t.Union([
-        t.Optional(t.File({ type: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'], maxSize: '5m' })),
-        t.Optional(t.Literal('')) // Explicitly allow empty string
-    ], { default: undefined }) // Default to undefined if neither matches or is provided
+    role: t.Optional(t.String({ 
+        minLength: 2, 
+        maxLength: 50,
+        description: 'Role description'
+    })),
+    bio: t.Optional(t.String({ 
+        maxLength: 500,
+        description: 'Member biography'
+    })),
+    avatar: t.Optional(t.Any({
+        description: 'Member avatar file'
+    }))
 });
 
-// You can define reusable error schemas here too if needed
-// export const memberNotFoundError = t.Object({ error: t.Literal('Member not found') });
+export const permissionUpdateSchema = t.Object({
+    permission: t.Enum(UserPermission, {
+        description: 'Member permission level'
+    })
+});
+
+export const errorSchema = t.Object({
+    error: t.String({
+        description: 'Error identifier'
+    }),
+    message: t.String({
+        description: 'Error message'
+    })
+});

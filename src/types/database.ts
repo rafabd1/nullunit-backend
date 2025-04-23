@@ -1,7 +1,10 @@
+import { UserPermission, ContentType } from './permissions';
+
 export interface Member {
     id: string;
     username: string;
     role: string;
+    permission: UserPermission;
     avatar_url?: string;
     bio: string;
     created_at: string;
@@ -51,4 +54,12 @@ export interface PortfolioProject {
     member_id: string;
     created_at: string;
     updated_at: string;
+}
+
+export interface Like {
+    id: string;
+    user_id: string;
+    content_type: ContentType;
+    content_id: string;
+    created_at: string;
 }

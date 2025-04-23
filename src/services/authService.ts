@@ -1,5 +1,6 @@
 import { supabase } from '../config/supabase';
 import type { VerifyEmailResponse, SignupResponse, LoginResponse } from '../types/auth';
+import { UserPermission } from '../types/permissions';
 
 /**
  * @description Configuration options for authentication cookies
@@ -44,6 +45,7 @@ export class AuthService {
                 id: user.id,
                 username: user.user_metadata?.username,
                 role: 'member',
+                permission: UserPermission.GUEST,
                 bio: ''
             })
             .select()

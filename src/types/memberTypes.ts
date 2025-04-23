@@ -1,24 +1,39 @@
-// src/types/memberTypes.ts
+import { UserPermission } from './permissions';
+
+export interface MemberWithPermission {
+    id: string;
+    permission: UserPermission;
+}
+
 export interface MemberInputData {
     username: string;
     role: string;
     bio: string;
-    avatar?: File; // Use File type matching the schema
+    avatar?: File | Buffer;
 }
 
 export interface MemberUpdateData {
     role?: string;
     bio?: string;
-    avatar?: File; // Use File type matching the schema
+    avatar?: File | Buffer;
 }
 
-// Represents data structure closer to the database input for creation
 export interface MemberDbInput {
     id: string;
     username: string;
     role: string;
+    permission?: UserPermission;
     bio: string;
     avatar_url?: string;
 }
 
-// Consider adding other member-specific types if needed
+export interface MemberResponse {
+    id: string;
+    username: string;
+    role: string;
+    permission: UserPermission;
+    bio: string;
+    avatar_url?: string;
+    created_at: string;
+    updated_at: string;
+}
