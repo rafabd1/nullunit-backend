@@ -132,18 +132,27 @@ export const memberRoutes = new Elysia({ prefix: '/members' })
                     avatarUrl = await MemberService.handleAvatar(buffer, params.username);
                 }
 
-                const updatedMember = await MemberService.update(params.username, {
+                const updatePayload = {
                     ...sanitizedData,
                     ...(avatarUrl && { avatar_url: avatarUrl })
-                });
+                };
 
-                return updatedMember;
-            } catch (validationError: unknown) {
-                set.status = 400;
-                return { 
-                    error: 'Validation failed',
-                    message: validationError instanceof Error ? 
-                        validationError.message : 'Invalid input data'
+                const updatedMember = await MemberService.update(params.username, updatePayload);
+
+                set.status = 200;
+                return sanitizeMemberData(updatedMember);
+            } catch (error: any) { 
+                if (error && error.message === 'Member not found') {
+                    set.status = 404;
+                    return { error: 'Member not found' }; 
+                }
+
+                console.error('Member update failed:', error);
+
+                set.status = 500; 
+                return {
+                    error: 'Update failed',
+                    message: error instanceof Error ? error.message : 'An internal error occurred'
                 };
             }
         })({ body, request, set });
@@ -170,6 +179,9 @@ export const memberRoutes = new Elysia({ prefix: '/members' })
                 },
                 '403': {
                     description: 'Forbidden - Can only update own profile'
+                },
+                '404': {
+                    description: 'Member not found'
                 }
             }
         }
@@ -191,9 +203,19 @@ export const memberRoutes = new Elysia({ prefix: '/members' })
                     message: 'Member deleted successfully',
                     timestamp: new Date().toISOString()
                 };
-            } catch (error) {
-                set.status = 500;
-                return { error: 'Failed to delete member' };
+            } catch (error: any) {
+                if (error && error.message === 'Member not found') {
+                    set.status = 404;
+                    return { error: 'Member not found' };
+                }
+
+                console.error('Member deletion failed:', error);
+
+                set.status = 500; 
+                return {
+                    error: 'Deletion failed',
+                    message: error instanceof Error ? error.message : 'An internal error occurred'
+                };
             }
         })({ request, set });
     }, {
@@ -222,6 +244,9 @@ export const memberRoutes = new Elysia({ prefix: '/members' })
                 },
                 '403': {
                     description: 'Forbidden - Admin access required'
+                },
+                '404': {
+                    description: 'Member not found'
                 }
             }
         }
