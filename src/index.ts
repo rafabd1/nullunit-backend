@@ -1,13 +1,21 @@
 import { Elysia } from 'elysia';
 import { swagger } from '@elysiajs/swagger';
+import { cookie } from '@elysiajs/cookie';
 import { supabase } from './config/supabase';
+import { configureCors } from './config/cors';
 import { memberRoutes } from './routes/memberRoutes';
 import { authRoutes } from './routes/authRoutes';
 import { articleRoutes } from './routes/articleRoutes';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
+const isProduction = process.env.NODE_ENV === 'production';
 
+/**
+ * @description Initialize API with middleware and routes
+ */
 const app = new Elysia()
+    .use(cookie())
+    .use(configureCors)
     .use(swagger({
         documentation: {
             info: {
@@ -36,6 +44,31 @@ const app = new Elysia()
         },
         path: '/docs'
     }))
+    .derive(({ cookie: { auth }, setCookie, removeCookie }) => {
+        const cookieOptions = {
+            httpOnly: true,
+            secure: isProduction,
+            sameSite: isProduction ? ('strict' as const) : ('lax' as const),
+            path: '/',
+            maxAge: 7 * 24 * 60 * 60
+        };
+
+        return {
+            getAuthToken: () => {
+                try {
+                    return JSON.parse(auth || '{}').access_token;
+                } catch {
+                    return undefined;
+                }
+            },
+            setAuthCookies: (access_token: string, refresh_token: string) => {
+                setCookie('auth', JSON.stringify({ access_token, refresh_token }), cookieOptions);
+            },
+            clearAuthCookies: () => {
+                removeCookie('auth');
+            }
+        };
+    })
     .get('/', {
         detail: {
             tags: ['system'],
