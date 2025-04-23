@@ -1,4 +1,4 @@
-import { Elysia } from 'elysia';
+import { Elysia, t } from 'elysia';
 import { cookie } from '@elysiajs/cookie';
 import { AuthService } from '../services/authService';
 import { authSchemas } from '../schemas/authSchemas';
@@ -11,127 +11,145 @@ import type {
 
 const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 
-export const authRoutes = new Elysia()
-    .group('/auth', app => app
-        .use(cookie())
-        .get('/verify', ({ query, set }: AuthContext) => 
-            handleVerifyEmail(query, set), {
-                detail: {
-                    tags: ['auth'],
-                    summary: 'Verify email and create member account',
-                    description: 'Validates user email and creates their member profile',
-                    query: authSchemas.verifyQuery,
-                    responses: {
-                        '302': {
-                            description: 'Redirect to success or error page'
-                        }
-                    }
-                }
-            }
-        )
-        .post('/signup', ({ body, set }: SignupContext) => 
-            handleSignup(body, set), {
-                body: authSchemas.signup,
-                detail: {
-                    tags: ['auth'],
-                    summary: 'Create new user account',
-                    description: 'Register new user and send verification email',
-                    responses: {
-                        '200': {
-                            description: 'Verification email sent',
-                            content: {
-                                'application/json': {
-                                    schema: authSchemas.signupResponse
-                                }
+export const authRoutes = new Elysia({ prefix: '/auth' })
+    .use(cookie())
+    .get('/verify', ({ query, set }: AuthContext) => 
+        handleVerifyEmail(query, set), {
+            detail: {
+                tags: ['auth'],
+                description: 'Validates user email via token. Returns a JSON object with a URL to redirect the user to. Sets auth cookie on success.',
+                query: authSchemas.verifyQuery,
+                responses: {
+                    '200': {
+                        description: 'Verification successful or user already verified. Redirect URL provided.',
+                        content: {
+                            'application/json': {
+                                schema: t.Object({ redirectTo: t.String() })
                             }
                         },
-                        '400': {
-                            description: 'Invalid input or username taken',
-                            content: {
-                                'application/json': {
-                                    schema: authSchemas.errorResponse
-                                }
+                        headers: { 
+                            'Set-Cookie': {
+                                schema: { type: 'string' },
+                                description: 'Sets the authentication cookie if verification is successful.'
+                            }
+                        }
+                    },
+                    '400': {
+                        description: 'Invalid type or verification error. Redirect URL for error page provided.',
+                        content: {
+                            'application/json': {
+                                schema: t.Object({ 
+                                    redirectTo: t.String(),
+                                    error: t.Optional(t.String()) 
+                                })
                             }
                         }
                     }
                 }
             }
-        )
-        .post('/login', ({ body, set }: LoginContext) => 
-            handleLogin(body, set), {
-                body: authSchemas.login,
-                detail: {
-                    tags: ['auth'],
-                    summary: 'Authenticate user',
-                    description: 'Login with email and password',
-                    responses: {
-                        '200': {
-                            description: 'Login successful',
-                            content: {
-                                'application/json': {
-                                    schema: authSchemas.loginResponse
-                                }
+        }
+    )
+    .post('/signup', ({ body, set }: SignupContext) => 
+        handleSignup(body, set), {
+            body: authSchemas.signup,
+            detail: {
+                tags: ['auth'],
+                description: 'Register new user and send verification email',
+                responses: {
+                    '200': {
+                        description: 'Verification email sent',
+                        content: {
+                            'application/json': {
+                                schema: authSchemas.signupResponse
                             }
-                        },
-                        '401': {
-                            description: 'Invalid credentials',
-                            content: {
-                                'application/json': {
-                                    schema: authSchemas.errorResponse
-                                }
+                        }
+                    },
+                    '400': {
+                        description: 'Invalid input or username taken',
+                        content: {
+                            'application/json': {
+                                schema: authSchemas.errorResponse
                             }
                         }
                     }
                 }
             }
-        )
-        .post('/logout', ({ set }: LogoutContext) => 
-            handleLogout(set), {
-                detail: {
-                    tags: ['auth'],
-                    summary: 'End user session',
-                    description: 'Logout and clear authentication',
-                    responses: {
-                        '200': {
-                            description: 'Logout successful',
-                            content: {
-                                'application/json': {
-                                    schema: authSchemas.logoutResponse
-                                }
+        }
+    )
+    .post('/login', ({ body, set }: LoginContext) => 
+        handleLogin(body, set), {
+            body: authSchemas.login,
+            detail: {
+                tags: ['auth'],
+                description: 'Login with email and password',
+                responses: {
+                    '200': {
+                        description: 'Login successful',
+                        content: {
+                            'application/json': {
+                                schema: authSchemas.loginResponse
                             }
-                        },
-                        '500': {
-                            description: 'Server error',
-                            content: {
-                                'application/json': {
-                                    schema: authSchemas.errorResponse
-                                }
+                        }
+                    },
+                    '401': {
+                        description: 'Invalid credentials',
+                        content: {
+                            'application/json': {
+                                schema: authSchemas.errorResponse
                             }
                         }
                     }
                 }
             }
-        )
+        }
+    )
+    .post('/logout', ({ set }: LogoutContext) => 
+        handleLogout(set), {
+            detail: {
+                tags: ['auth'],
+                description: 'Logout and clear authentication',
+                responses: {
+                    '200': {
+                        description: 'Logout successful',
+                        content: {
+                            'application/json': {
+                                schema: authSchemas.logoutResponse
+                            }
+                        }
+                    },
+                    '500': {
+                        description: 'Server error',
+                        content: {
+                            'application/json': {
+                                schema: authSchemas.errorResponse
+                            }
+                        }
+                    }
+                }
+            }
+        }
     );
 
 /**
  * @description Handles email verification and member account creation
  */
 async function handleVerifyEmail(query: AuthContext['query'], set: AuthContext['set']) {
+    let redirectTo = `${frontendUrl}/auth/error?error=unknown_error`; // Default error URL
+    let errorMessage: string | undefined = 'Unknown error';
     try {
         if (query.type !== 'signup') {
-            set.status = 302;
-            set.headers.location = `${frontendUrl}/auth/error?error=invalid_type`;
-            return null;
+            redirectTo = `${frontendUrl}/auth/error?error=invalid_type`;
+            errorMessage = 'Invalid type';
+            set.status = 400;
+            return { redirectTo, error: errorMessage };
         }
 
         const result = await AuthService.verifyEmail(query.email, query.access_token);
-        set.status = 302;
 
         if (result.status === 'already_verified') {
-            set.headers.location = `${frontendUrl}/auth/success?message=already_verified`;
+            redirectTo = `${frontendUrl}/auth/success?message=already_verified`;
         } else {
-            set.headers.location = `${frontendUrl}/auth/success`;
+            redirectTo = `${frontendUrl}/auth/success`;
         }
 
         if (result.accessToken) {
@@ -140,17 +158,19 @@ async function handleVerifyEmail(query: AuthContext['query'], set: AuthContext['
             });
         }
 
-        return null;
+        set.status = 200; // OK
+        return { redirectTo }; // Retorna JSON
     } catch (error) {
         const err = error as Error;
-        set.status = 302;
-        set.headers.location = `${frontendUrl}/auth/error?error=${encodeURIComponent(err.message)}`;
-        return null;
+        errorMessage = err.message;
+        redirectTo = `${frontendUrl}/auth/error?error=${encodeURIComponent(errorMessage)}`;
+        set.status = 400; // Bad Request ou outro erro apropriado
+        return { redirectTo, error: errorMessage }; // Retorna JSON com erro
     }
 }
 
 /**
- * @description Handles user registration
+ * Handles user registration
  */
 async function handleSignup(body: SignupContext['body'], set: SignupContext['set']) {
     try {
@@ -163,7 +183,7 @@ async function handleSignup(body: SignupContext['body'], set: SignupContext['set
 }
 
 /**
- * @description Handles user authentication
+ * Handles user authentication
  */
 async function handleLogin(body: LoginContext['body'], set: LoginContext['set']) {
     try {
@@ -183,7 +203,7 @@ async function handleLogin(body: LoginContext['body'], set: LoginContext['set'])
 }
 
 /**
- * @description Handles user logout
+ * Handles user logout
  */
 async function handleLogout(set: LogoutContext['set']) {
     try {
