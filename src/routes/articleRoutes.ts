@@ -256,4 +256,49 @@ export const articleRoutes = new Elysia({ prefix: '/articles' })
                 ...commonErrorResponses
             }
         }
+    })
+    .delete('/:moduleSlug', async ({ params, request, set }: RouteContext & { params: { moduleSlug: string } }) => {
+        return requireAuthor(async ({ user, set }: AuthenticatedContext) => {
+            try {
+                const module = await ArticleService.getModuleBySlug(params.moduleSlug);
+                if (!module) {
+                    set.status = 404;
+                    return {
+                        error: 'Not found',
+                        message: 'Article module not found'
+                    };
+                }
+
+                if (module.member_id !== user.id) {
+                    set.status = 403;
+                    return {
+                        error: 'Forbidden',
+                        message: 'You can only delete your own modules'
+                    };
+                }
+
+                await ArticleService.deleteModule(module.id);
+                set.status = 204;
+                return null;
+            } catch (error) {
+                set.status = 500;
+                return {
+                    error: 'Delete failed',
+                    message: error instanceof Error ? error.message : 'Failed to delete module'
+                };
+            }
+        })({ params, request, set });
+    }, {
+        detail: {
+            tags: ['articles'],
+            summary: 'Delete article module',
+            description: 'Delete an article module and all its sub-articles (requires author permission)',
+            security: [{ bearerAuth: [] }],
+            responses: {
+                '204': {
+                    description: 'Module deleted successfully'
+                },
+                ...commonErrorResponses
+            }
+        }
     });

@@ -15,6 +15,12 @@ interface CreateSubArticleInput {
     content: string;
 }
 
+interface UpdateArticleModuleInput {
+    title?: string;
+    description?: string;
+    slug?: string;
+}
+
 /**
  * @description Service layer for article management
  */
@@ -53,7 +59,14 @@ export class ArticleService {
             .eq('slug', slug)
             .single();
 
-        if (error && error.code !== 'PGRST116') throw new Error(`Failed to fetch article module: ${error.message}`);
+        if (error) {
+            if (error.code === 'PGRST116') {
+                console.log('No module found with slug:', slug);
+                return null;
+            }
+            throw new Error(`Failed to fetch article module: ${error.message}`);
+        }
+
         return data;
     }
 
@@ -68,6 +81,21 @@ export class ArticleService {
             .single();
 
         if (error) throw new Error(`Failed to create article module: ${error.message}`);
+        return data;
+    }
+
+    /**
+     * @description Update an article module
+     */
+    static async updateModule(moduleId: string, input: UpdateArticleModuleInput): Promise<ArticleModule> {
+        const { data, error } = await supabase
+            .from('article_modules')
+            .update(input)
+            .eq('id', moduleId)
+            .select(this.MODULE_QUERY)
+            .single();
+
+        if (error) throw new Error(`Failed to update article module: ${error.message}`);
         return data;
     }
 
@@ -107,5 +135,17 @@ export class ArticleService {
 
         if (error && error.code !== 'PGRST116') throw new Error(`Failed to fetch sub-article: ${error.message}`);
         return data;
+    }
+
+    /**
+     * @description Delete an article module and all its sub-articles
+     */
+    static async deleteModule(moduleId: string): Promise<void> {
+        const { error } = await supabase
+            .from('article_modules')
+            .delete()
+            .eq('id', moduleId);
+
+        if (error) throw new Error(`Failed to delete article module: ${error.message}`);
     }
 }
