@@ -1,38 +1,116 @@
-import { Elysia, t } from 'elysia';
+import { Elysia } from 'elysia';
 import { ArticleService } from '../services/articleService';
-import { auth } from '../middlewares/auth';
+import { auth, requireAuthor } from '../middlewares/auth';
 import { sanitizeModuleData, sanitizeSubArticleData } from '../utils/articleSanitizer';
 import { RouteContext, AuthenticatedContext } from '../types/routes';
 import { ModuleInputData, SubArticleInputData } from '../types/articleTypes';
-import { articleModuleSchema, subArticleSchema, moduleInputSchema, subArticleInputSchema } from '../schemas/articleSchemas';
+import { 
+    articleModuleSchema, 
+    subArticleSchema, 
+    moduleInputSchema, 
+    subArticleInputSchema,
+    errorSchema 
+} from '../schemas/articleSchemas';
+
+const commonErrorResponses = {
+    '400': {
+        description: 'Invalid input data',
+        content: {
+            'application/json': {
+                schema: errorSchema
+            }
+        }
+    },
+    '401': {
+        description: 'Unauthorized',
+        content: {
+            'application/json': {
+                schema: errorSchema
+            }
+        }
+    },
+    '403': {
+        description: 'Forbidden',
+        content: {
+            'application/json': {
+                schema: errorSchema
+            }
+        }
+    },
+    '404': {
+        description: 'Not found',
+        content: {
+            'application/json': {
+                schema: errorSchema
+            }
+        }
+    },
+    '500': {
+        description: 'Internal server error',
+        content: {
+            'application/json': {
+                schema: errorSchema
+            }
+        }
+    }
+};
 
 export const articleRoutes = new Elysia({ prefix: '/articles' })
-    .get('/', async () => {
-        return await ArticleService.getAllModules();
+    .get('/', async ({ set }) => {
+        try {
+            const modules = await ArticleService.getAllModules();
+            return modules;
+        } catch (error) {
+            set.status = 500;
+            return {
+                error: 'Failed to fetch articles',
+                message: error instanceof Error ? error.message : 'Unknown error'
+            };
+        }
     }, {
         detail: {
             tags: ['articles'],
-            description: 'Get all article modules',
+            summary: 'Get all article modules',
+            description: 'Retrieve all article modules with their sub-articles',
             responses: {
                 '200': {
                     description: 'List of all article modules',
                     content: {
                         'application/json': {
-                            schema: t.Array(articleModuleSchema)
+                            schema: {
+                                type: 'array',
+                                items: articleModuleSchema
+                            }
                         }
                     }
-                }
+                },
+                ...commonErrorResponses
             }
         }
     })
-    .get('/:moduleSlug', async ({ params }: RouteContext & { 
-        params: { moduleSlug: string } 
-    }) => {
-        return await ArticleService.getModuleBySlug(params.moduleSlug);
+    .get('/:moduleSlug', async ({ params, set }) => {
+        try {
+            const module = await ArticleService.getModuleBySlug(params.moduleSlug);
+            if (!module) {
+                set.status = 404;
+                return {
+                    error: 'Not found',
+                    message: 'Article module not found'
+                };
+            }
+            return module;
+        } catch (error) {
+            set.status = 500;
+            return {
+                error: 'Failed to fetch article',
+                message: error instanceof Error ? error.message : 'Unknown error'
+            };
+        }
     }, {
         detail: {
             tags: ['articles'],
-            description: 'Get article module by slug',
+            summary: 'Get article module',
+            description: 'Get article module by its slug',
             responses: {
                 '200': {
                     description: 'Article module details',
@@ -41,18 +119,34 @@ export const articleRoutes = new Elysia({ prefix: '/articles' })
                             schema: articleModuleSchema
                         }
                     }
-                }
+                },
+                ...commonErrorResponses
             }
         }
     })
-    .get('/:moduleSlug/:articleSlug', async ({ params }: RouteContext & { 
-        params: { moduleSlug: string; articleSlug: string } 
-    }) => {
-        return await ArticleService.getSubArticle(params.moduleSlug, params.articleSlug);
+    .get('/:moduleSlug/:articleSlug', async ({ params, set }) => {
+        try {
+            const article = await ArticleService.getSubArticleBySlug(params.moduleSlug, params.articleSlug);
+            if (!article) {
+                set.status = 404;
+                return {
+                    error: 'Not found',
+                    message: 'Sub-article not found'
+                };
+            }
+            return article;
+        } catch (error) {
+            set.status = 500;
+            return {
+                error: 'Failed to fetch article',
+                message: error instanceof Error ? error.message : 'Unknown error'
+            };
+        }
     }, {
         detail: {
             tags: ['articles'],
-            description: 'Get sub-article by slug',
+            summary: 'Get sub-article',
+            description: 'Get sub-article by its slug and parent module slug',
             responses: {
                 '200': {
                     description: 'Sub-article details',
@@ -61,29 +155,26 @@ export const articleRoutes = new Elysia({ prefix: '/articles' })
                             schema: subArticleSchema
                         }
                     }
-                }
+                },
+                ...commonErrorResponses
             }
         }
     })
-    .post('/', async ({ body, request, set }: RouteContext & { 
-        body: ModuleInputData 
-    }) => {
-        return auth(async ({ user, set }: AuthenticatedContext) => {
+    .post('/', async ({ body, request, set }: RouteContext & { body: ModuleInputData }) => {
+        return requireAuthor(async ({ user, set }: AuthenticatedContext) => {
             try {
                 const sanitizedData = sanitizeModuleData(body);
                 const module = await ArticleService.createModule({
                     ...sanitizedData,
                     member_id: user.id
                 });
-
                 set.status = 201;
                 return module;
-            } catch (validationError: unknown) {
+            } catch (error) {
                 set.status = 400;
                 return {
                     error: 'Validation failed',
-                    message: validationError instanceof Error ?
-                        validationError.message : 'Invalid input data'
+                    message: error instanceof Error ? error.message : 'Invalid input data'
                 };
             }
         })({ body, request, set });
@@ -91,17 +182,19 @@ export const articleRoutes = new Elysia({ prefix: '/articles' })
         body: moduleInputSchema,
         detail: {
             tags: ['articles'],
-            description: 'Create new article module',
+            summary: 'Create article module',
+            description: 'Create new article module (requires author permission)',
             security: [{ bearerAuth: [] }],
             responses: {
                 '201': {
-                    description: 'Article module created successfully',
+                    description: 'Article module created',
                     content: {
                         'application/json': {
                             schema: articleModuleSchema
                         }
                     }
-                }
+                },
+                ...commonErrorResponses
             }
         }
     })
@@ -109,221 +202,58 @@ export const articleRoutes = new Elysia({ prefix: '/articles' })
         params: { moduleSlug: string }, 
         body: SubArticleInputData 
     }) => {
-        return auth(async ({ user, set }: AuthenticatedContext) => {
+        return requireAuthor(async ({ user, set }: AuthenticatedContext) => {
             try {
-                const currentModule = await ArticleService.getModuleBySlug(params.moduleSlug);
-                if (currentModule.member_id !== user.id) {
+                const module = await ArticleService.getModuleBySlug(params.moduleSlug);
+                if (!module) {
+                    set.status = 404;
+                    return {
+                        error: 'Not found',
+                        message: 'Article module not found'
+                    };
+                }
+
+                if (module.member_id !== user.id) {
                     set.status = 403;
-                    return { error: 'Forbidden: You can only add articles to your own modules' };
+                    return {
+                        error: 'Forbidden',
+                        message: 'You can only add articles to your own modules'
+                    };
                 }
 
                 const sanitizedData = sanitizeSubArticleData(body);
-                const article = await ArticleService.createSubArticle({
+                const subArticle = await ArticleService.createSubArticle({
                     ...sanitizedData,
-                    module_id: currentModule.id,
-                    author_id: user.id
+                    module_id: module.id
                 });
 
                 set.status = 201;
-                return article;
-            } catch (validationError: unknown) {
+                return subArticle;
+            } catch (error) {
                 set.status = 400;
                 return {
                     error: 'Validation failed',
-                    message: validationError instanceof Error ?
-                        validationError.message : 'Invalid input data'
+                    message: error instanceof Error ? error.message : 'Invalid input data'
                 };
             }
-        })({ body, request, set });
+        })({ params, body, request, set });
     }, {
         body: subArticleInputSchema,
         detail: {
             tags: ['articles'],
-            description: 'Create new sub-article',
+            summary: 'Create sub-article',
+            description: 'Create new sub-article in a module (requires author permission)',
             security: [{ bearerAuth: [] }],
             responses: {
                 '201': {
-                    description: 'Sub-article created successfully',
+                    description: 'Sub-article created',
                     content: {
                         'application/json': {
                             schema: subArticleSchema
                         }
                     }
-                }
-            }
-        }
-    })
-    .put('/:moduleSlug', async ({ params, body, request, set }: RouteContext & { 
-        params: { moduleSlug: string }, 
-        body: ModuleInputData 
-    }) => {
-        return auth(async ({ user, set }: AuthenticatedContext) => {
-            try {
-                const currentModule = await ArticleService.getModuleBySlug(params.moduleSlug);
-                if (currentModule.member_id !== user.id) {
-                    set.status = 403;
-                    return { error: 'Forbidden: You can only update your own modules' };
-                }
-
-                const sanitizedData = sanitizeModuleData(body);
-                const module = await ArticleService.updateModule(params.moduleSlug, sanitizedData);
-                return module;
-            } catch (validationError: unknown) {
-                set.status = 400;
-                return {
-                    error: 'Validation failed',
-                    message: validationError instanceof Error ?
-                        validationError.message : 'Invalid input data'
-                };
-            }
-        })({ body, request, set });
-    }, {
-        body: moduleInputSchema,
-        detail: {
-            tags: ['articles'],
-            description: 'Update article module',
-            security: [{ bearerAuth: [] }],
-            responses: {
-                '200': {
-                    description: 'Article module updated successfully',
-                    content: {
-                        'application/json': {
-                            schema: articleModuleSchema
-                        }
-                    }
-                }
-            }
-        }
-    })
-    .put('/:moduleSlug/:articleSlug', async ({ params, body, request, set }: RouteContext & { 
-        params: { moduleSlug: string; articleSlug: string }, 
-        body: SubArticleInputData 
-    }) => {
-        return auth(async ({ user, set }: AuthenticatedContext) => {
-            try {
-                const currentArticle = await ArticleService.getSubArticle(params.moduleSlug, params.articleSlug);
-                if (currentArticle.author_id !== user.id) {
-                    set.status = 403;
-                    return { error: 'Forbidden: You can only update your own articles' };
-                }
-
-                const sanitizedData = sanitizeSubArticleData(body);
-                const article = await ArticleService.updateSubArticle(
-                    params.moduleSlug,
-                    params.articleSlug,
-                    sanitizedData
-                );
-                return article;
-            } catch (validationError: unknown) {
-                set.status = 400;
-                return {
-                    error: 'Validation failed',
-                    message: validationError instanceof Error ?
-                        validationError.message : 'Invalid input data'
-                };
-            }
-        })({ body, request, set });
-    }, {
-        body: subArticleInputSchema,
-        detail: {
-            tags: ['articles'],
-            description: 'Update sub-article',
-            security: [{ bearerAuth: [] }],
-            responses: {
-                '200': {
-                    description: 'Sub-article updated successfully',
-                    content: {
-                        'application/json': {
-                            schema: subArticleSchema
-                        }
-                    }
-                }
-            }
-        }
-    })
-    .delete('/:moduleSlug', async ({ params, request, set }: RouteContext & { 
-        params: { moduleSlug: string } 
-    }) => {
-        return auth(async ({ user, set }: AuthenticatedContext) => {
-            try {
-                const currentModule = await ArticleService.getModuleBySlug(params.moduleSlug);
-                if (currentModule.member_id !== user.id) {
-                    set.status = 403;
-                    return { error: 'Forbidden: You can only delete your own modules' };
-                }
-
-                await ArticleService.deleteModule(params.moduleSlug);
-                return {
-                    status: 'success',
-                    message: 'Article module deleted successfully',
-                    timestamp: new Date().toISOString()
-                };
-            } catch (error) {
-                set.status = 500;
-                return { error: 'Failed to delete module' };
-            }
-        })({ request, set });
-    }, {
-        detail: {
-            tags: ['articles'],
-            description: 'Delete article module',
-            security: [{ bearerAuth: [] }],
-            responses: {
-                '200': {
-                    description: 'Article module deleted successfully',
-                    content: {
-                        'application/json': {
-                            schema: t.Object({
-                                status: t.String(),
-                                message: t.String(),
-                                timestamp: t.String({ format: 'date-time' })
-                            })
-                        }
-                    }
-                }
-            }
-        }
-    })
-    .delete('/:moduleSlug/:articleSlug', async ({ params, request, set }: RouteContext & { 
-        params: { moduleSlug: string; articleSlug: string } 
-    }) => {
-        return auth(async ({ user, set }: AuthenticatedContext) => {
-            try {
-                const currentArticle = await ArticleService.getSubArticle(params.moduleSlug, params.articleSlug);
-                if (currentArticle.author_id !== user.id) {
-                    set.status = 403;
-                    return { error: 'Forbidden: You can only delete your own articles' };
-                }
-
-                await ArticleService.deleteSubArticle(params.moduleSlug, params.articleSlug);
-                return {
-                    status: 'success',
-                    message: 'Article deleted successfully',
-                    timestamp: new Date().toISOString()
-                };
-            } catch (error) {
-                set.status = 500;
-                return { error: 'Failed to delete article' };
-            }
-        })({ request, set });
-    }, {
-        detail: {
-            tags: ['articles'],
-            description: 'Delete sub-article',
-            security: [{ bearerAuth: [] }],
-            responses: {
-                '200': {
-                    description: 'Sub-article deleted successfully',
-                    content: {
-                        'application/json': {
-                            schema: t.Object({
-                                status: t.String(),
-                                message: t.String(),
-                                timestamp: t.String({ format: 'date-time' })
-                            })
-                        }
-                    }
-                }
+                },
+                ...commonErrorResponses
             }
         }
     });

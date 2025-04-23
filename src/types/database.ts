@@ -25,7 +25,8 @@ export interface ArticleModule {
     description?: string;
     member_id: string;
     created_at: string;
-    updated_at: string;
+    updated_at: string | null;
+    sub_articles?: SubArticle[];
 }
 
 export interface SubArticle {
@@ -34,10 +35,8 @@ export interface SubArticle {
     slug: string;
     title: string;
     content: string;
-    author_id: string;
-    published_date: string;
     created_at: string;
-    updated_at: string;
+    updated_at: string | null;
 }
 
 export interface Tag {

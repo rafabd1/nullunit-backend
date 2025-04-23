@@ -10,7 +10,6 @@ interface CreateArticleModuleInput {
 
 interface CreateSubArticleInput {
     module_id: string;
-    author_id: string;
     slug: string;
     title: string;
     content: string;
@@ -27,16 +26,8 @@ export class ArticleService {
             slug,
             title,
             content,
-            author_id,
-            published_date,
             created_at,
             updated_at
-        ),
-        article_module_tags (
-            tags (
-                id,
-                name
-            )
         )`;
 
     /**
@@ -53,46 +44,16 @@ export class ArticleService {
     }
 
     /**
-     * @description Get an article module by slug
+     * @description Get a specific article module by its slug
      */
-    static async getModuleBySlug(slug: string): Promise<ArticleModule> {
+    static async getModuleBySlug(slug: string): Promise<ArticleModule | null> {
         const { data, error } = await supabase
             .from('article_modules')
             .select(this.MODULE_QUERY)
             .eq('slug', slug)
             .single();
 
-        if (error || !data) throw new Error('Article module not found');
-        return data;
-    }
-
-    /**
-     * @description Get a sub-article by module slug and article slug
-     */
-    static async getSubArticle(moduleSlug: string, articleSlug: string): Promise<SubArticle> {
-        const { data: module } = await supabase
-            .from('article_modules')
-            .select('id')
-            .eq('slug', moduleSlug)
-            .single();
-
-        if (!module) throw new Error('Article module not found');
-
-        const { data, error } = await supabase
-            .from('sub_articles')
-            .select(`
-                *,
-                article_module:article_modules!inner(
-                    id,
-                    slug,
-                    title
-                )
-            `)
-            .eq('module_id', module.id)
-            .eq('slug', articleSlug)
-            .single();
-
-        if (error || !data) throw new Error('Sub-article not found');
+        if (error && error.code !== 'PGRST116') throw new Error(`Failed to fetch article module: ${error.message}`);
         return data;
     }
 
@@ -102,11 +63,7 @@ export class ArticleService {
     static async createModule(input: CreateArticleModuleInput): Promise<ArticleModule> {
         const { data, error } = await supabase
             .from('article_modules')
-            .insert({
-                ...input,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-            })
+            .insert(input)
             .select(this.MODULE_QUERY)
             .single();
 
@@ -120,12 +77,7 @@ export class ArticleService {
     static async createSubArticle(input: CreateSubArticleInput): Promise<SubArticle> {
         const { data, error } = await supabase
             .from('sub_articles')
-            .insert({
-                ...input,
-                published_date: new Date().toISOString(),
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-            })
+            .insert(input)
             .select()
             .single();
 
@@ -134,68 +86,26 @@ export class ArticleService {
     }
 
     /**
-     * @description Update an article module
+     * @description Get a specific sub-article by its slug and module slug
      */
-    static async updateModule(slug: string, updates: Partial<Omit<ArticleModule, 'id' | 'created_at'>>): Promise<ArticleModule> {
-        const { data, error } = await supabase
+    static async getSubArticleBySlug(moduleSlug: string, subArticleSlug: string): Promise<SubArticle | null> {
+        const { data: module, error: moduleError } = await supabase
             .from('article_modules')
-            .update({
-                ...updates,
-                updated_at: new Date().toISOString()
-            })
-            .eq('slug', slug)
-            .select(this.MODULE_QUERY)
+            .select('id')
+            .eq('slug', moduleSlug)
             .single();
 
-        if (error) throw new Error(`Failed to update article module: ${error.message}`);
-        return data;
-    }
-
-    /**
-     * @description Update a sub-article
-     */
-    static async updateSubArticle(moduleSlug: string, articleSlug: string, updates: Partial<Omit<SubArticle, 'id' | 'created_at'>>): Promise<SubArticle> {
-        const module = await this.getModuleBySlug(moduleSlug);
+        if (moduleError) throw new Error(`Failed to fetch module: ${moduleError.message}`);
+        if (!module) return null;
 
         const { data, error } = await supabase
             .from('sub_articles')
-            .update({
-                ...updates,
-                updated_at: new Date().toISOString()
-            })
+            .select('*')
             .eq('module_id', module.id)
-            .eq('slug', articleSlug)
-            .select()
+            .eq('slug', subArticleSlug)
             .single();
 
-        if (error) throw new Error(`Failed to update sub-article: ${error.message}`);
+        if (error && error.code !== 'PGRST116') throw new Error(`Failed to fetch sub-article: ${error.message}`);
         return data;
-    }
-
-    /**
-     * @description Delete an article module and all its sub-articles
-     */
-    static async deleteModule(slug: string): Promise<void> {
-        const { error } = await supabase
-            .from('article_modules')
-            .delete()
-            .eq('slug', slug);
-
-        if (error) throw new Error(`Failed to delete article module: ${error.message}`);
-    }
-
-    /**
-     * @description Delete a sub-article
-     */
-    static async deleteSubArticle(moduleSlug: string, articleSlug: string): Promise<void> {
-        const module = await this.getModuleBySlug(moduleSlug);
-
-        const { error } = await supabase
-            .from('sub_articles')
-            .delete()
-            .eq('module_id', module.id)
-            .eq('slug', articleSlug);
-
-        if (error) throw new Error(`Failed to delete sub-article: ${error.message}`);
     }
 }
