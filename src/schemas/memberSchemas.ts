@@ -24,7 +24,11 @@ export const memberInputSchema = t.Object({
 export const memberUpdateSchema = t.Object({
     role: t.Optional(t.String({ minLength: 2, maxLength: 50 })),
     bio: t.Optional(t.String({ maxLength: 500 })),
-    avatar: t.Optional(t.File({ type: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'], maxSize: '5m' })) // Use t.File for uploads
+    // Allow avatar to be Optional File OR Optional empty string
+    avatar: t.Union([
+        t.Optional(t.File({ type: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'], maxSize: '5m' })),
+        t.Optional(t.Literal('')) // Explicitly allow empty string
+    ], { default: undefined }) // Default to undefined if neither matches or is provided
 });
 
 // You can define reusable error schemas here too if needed
