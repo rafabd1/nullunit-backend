@@ -163,7 +163,6 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
         body: authSchemas.updateEmailSchema,
         detail: {
             tags: ['auth'],
-            summary: 'Update user email',
             description: 'Update user email address',
             security: [{ bearerAuth: [] }],
             responses: {
@@ -218,7 +217,6 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
         body: authSchemas.updateUsernameSchema,
         detail: {
             tags: ['auth'],
-            summary: 'Update username',
             description: 'Update user username',
             security: [{ bearerAuth: [] }],
             responses: {
@@ -282,7 +280,6 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
         body: authSchemas.updatePasswordSchema,
         detail: {
             tags: ['auth'],
-            summary: 'Update password',
             description: 'Update user password',
             security: [{ bearerAuth: [] }],
             responses: {
@@ -334,7 +331,6 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
     }, {
         detail: {
             tags: ['auth'],
-            summary: 'Delete user account',
             description: 'Delete user account and associated member profile',
             security: [{ bearerAuth: [] }],
             responses: {

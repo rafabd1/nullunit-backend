@@ -32,7 +32,6 @@ export interface MemberProfileUpdate {
 
 export interface MemberDbInput {
     id: string;
-    email: string;
     username: string;
     role: string;
     permission?: UserPermission;
