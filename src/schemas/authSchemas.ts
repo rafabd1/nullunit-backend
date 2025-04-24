@@ -103,5 +103,37 @@ export const authSchemas = {
         error: t.String({
             description: 'Error message'
         })
+    }),
+
+    updateUserSchema: t.Object({
+        email: t.Optional(t.String()),
+        password: t.Optional(t.String()),
+        username: t.Optional(t.String())
+    }),
+
+    updateUserResponse: t.Object({
+        user: t.Object({
+            id: t.String(),
+            email: t.String(),
+            user_metadata: t.Object({
+                username: t.String()
+            })
+        }),
+        member: t.Object({
+            id: t.String(),
+            email: t.String(),
+            username: t.String(),
+            role: t.String(),
+            permission: t.String(),
+            bio: t.String(),
+            avatar_url: t.Optional(t.String()),
+            created_at: t.String(),
+            updated_at: t.String()
+        })
+    }),
+
+    deleteUserResponse: t.Object({
+        message: t.String(),
+        cookie: t.String()
     })
 };

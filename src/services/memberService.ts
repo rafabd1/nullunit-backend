@@ -1,6 +1,6 @@
 import { supabase } from '../config/supabase';
 import { validateImage } from '../config/storage';
-import { MemberDbInput, MemberResponse } from '../types/memberTypes';
+import { MemberDbInput, MemberResponse, MemberProfileUpdate } from '../types/memberTypes';
 import { UserPermission } from '../types/permissions';
 
 /**
@@ -36,18 +36,8 @@ export class MemberService {
 
     /**
      * @description Create new member profile
-     */
-    static async create(input: MemberDbInput): Promise<MemberResponse> {
-        const { data: existing } = await supabase
-            .from('members')
-            .select('username')
-            .eq('username', input.username)
-            .single();
-
-        if (existing) {
-            throw new Error('Username already taken');
-        }
-
+     */    static async create(input: MemberDbInput): Promise<MemberResponse> {
+        // Agora o create é interno, usado apenas pelo AuthService
         const { data, error } = await supabase
             .from('members')
             .insert({
@@ -63,14 +53,10 @@ export class MemberService {
 
     /**
      * @description Update member profile
-     */
-    static async update(id: string, updates: Partial<MemberDbInput>): Promise<MemberResponse> {
-        // Não permitir atualização de permission através deste método
-        const { permission, ...safeUpdates } = updates;
-        
+     */    static async update(id: string, updates: MemberProfileUpdate): Promise<MemberResponse> {        
         const { data, error } = await supabase
             .from('members')
-            .update(safeUpdates)
+            .update(updates)
             .eq('id', id)
             .select()
             .single();

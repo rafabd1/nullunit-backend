@@ -24,8 +24,15 @@ export interface MemberUpdateData {
     avatar?: File | Buffer;
 }
 
+export interface MemberProfileUpdate {
+    role?: string;
+    bio?: string;
+    avatar_url?: string;
+}
+
 export interface MemberDbInput {
     id: string;
+    email: string;
     username: string;
     role: string;
     permission?: UserPermission;

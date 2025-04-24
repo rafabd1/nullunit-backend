@@ -9,6 +9,10 @@ export const memberSchema = t.Object({
     username: t.String({
         description: 'Member username'
     }),
+    email: t.String({
+        format: 'email',
+        description: 'Member email'
+    }),
     role: t.String({
         description: 'Member role'
     }),

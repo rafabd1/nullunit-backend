@@ -2,11 +2,14 @@ import { Elysia, t } from 'elysia';
 import { cookie } from '@elysiajs/cookie';
 import { AuthService } from '../services/authService';
 import { authSchemas } from '../schemas/authSchemas';
+import { auth } from '../middlewares/auth';
+import { supabase } from '../config/supabase';
 import type { 
     AuthContext, 
     SignupContext, 
     LoginContext, 
-    LogoutContext 
+    LogoutContext,
+    AuthenticatedContext 
 } from '../types/auth';
 
 const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
@@ -128,7 +131,156 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
                 }
             }
         }
-    );
+    )
+    .patch('/user/email', async ({ body, request, set }: { 
+        body: { email: string },
+        request: Request,
+        set: { status: number, headers: Record<string, string> }
+    }) => {
+        return auth(async ({ user, set }) => {
+            try {
+                const result = await AuthService.updateEmail(user.id, body.email);
+                return result;
+            } catch (error) {
+                set.status = 400;
+                return { 
+                    error: 'Update failed',
+                    message: error instanceof Error ? error.message : 'Failed to update email'
+                };
+            }
+        })({ body, request, set });
+    })
+    .patch('/user/username', async ({ body, request, set }: { 
+        body: { username: string },
+        request: Request,
+        set: { status: number, headers: Record<string, string> }
+    }) => {
+        return auth(async ({ user, set }) => {
+            try {
+                const result = await AuthService.updateUsername(user.id, body.username);
+                return result;
+            } catch (error) {
+                set.status = 400;
+                return { 
+                    error: 'Update failed',
+                    message: error instanceof Error ? error.message : 'Failed to update username'
+                };
+            }
+        })({ body, request, set });
+    })
+    .patch('/user/password', async ({ body, request, set }: { 
+        body: { password: string },
+        request: Request,
+        set: { status: number, headers: Record<string, string> }
+    }) => {
+        return auth(async ({ user, set }) => {
+            try {
+                const { data: authUpdate, error: authError } = await supabase.auth.admin.updateUserById(
+                    user.id,
+                    { password: body.password }
+                );
+
+                if (authError) throw authError;
+
+                return {
+                    message: 'Password updated successfully'
+                };
+            } catch (error) {
+                set.status = 400;
+                return { 
+                    error: 'Update failed',
+                    message: error instanceof Error ? error.message : 'Failed to update password'
+                };
+            }
+        })({ body, request, set });
+    }, {
+        body: authSchemas.updateUserSchema,
+        detail: {
+            tags: ['auth'],
+            summary: 'Update user account',
+            description: 'Update user email, password, or username',
+            security: [{ bearerAuth: [] }],
+            responses: {
+                '200': {
+                    description: 'User updated successfully',
+                    content: {
+                        'application/json': {
+                            schema: authSchemas.updateUserResponse
+                        }
+                    }
+                },
+                '400': {
+                    description: 'Invalid input or update failed',
+                    content: {
+                        'application/json': {
+                            schema: authSchemas.errorResponse
+                        }
+                    }
+                },
+                '401': {
+                    description: 'Unauthorized',
+                    content: {
+                        'application/json': {
+                            schema: authSchemas.errorResponse
+                        }
+                    }
+                }
+            }
+        }
+    })
+    .delete('/user', async ({ request, set }: {
+        request: Request,
+        set: { status: number, headers: Record<string, string> }
+    }) => {
+        return auth(async ({ user, set }: AuthenticatedContext) => {
+            try {
+                await AuthService.deleteUser(user.id);
+                return { 
+                    message: 'User account deleted successfully',
+                    cookie: AuthService.getCookieString({}, true)
+                };
+            } catch (error) {
+                set.status = 400;
+                return { 
+                    error: 'Deletion failed',
+                    message: error instanceof Error ? error.message : 'Failed to delete user'
+                };
+            }
+        })({ request, set });
+    }, {
+        detail: {
+            tags: ['auth'],
+            summary: 'Delete user account',
+            description: 'Delete user account and associated member profile',
+            security: [{ bearerAuth: [] }],
+            responses: {
+                '200': {
+                    description: 'User deleted successfully',
+                    content: {
+                        'application/json': {
+                            schema: authSchemas.deleteUserResponse
+                        }
+                    }
+                },
+                '400': {
+                    description: 'Deletion failed',
+                    content: {
+                        'application/json': {
+                            schema: authSchemas.errorResponse
+                        }
+                    }
+                },
+                '401': {
+                    description: 'Unauthorized',
+                    content: {
+                        'application/json': {
+                            schema: authSchemas.errorResponse
+                        }
+                    }
+                }
+            }
+        }
+    });
 
 /**
  * @description Handles email verification and member account creation
@@ -158,14 +310,14 @@ async function handleVerifyEmail(query: AuthContext['query'], set: AuthContext['
             });
         }
 
-        set.status = 200; // OK
-        return { redirectTo }; // Retorna JSON
+        set.status = 200;
+        return { redirectTo };
     } catch (error) {
         const err = error as Error;
         errorMessage = err.message;
         redirectTo = `${frontendUrl}/auth/error?error=${encodeURIComponent(errorMessage)}`;
-        set.status = 400; // Bad Request ou outro erro apropriado
-        return { redirectTo, error: errorMessage }; // Retorna JSON com erro
+        set.status = 400;
+        return { redirectTo, error: errorMessage };
     }
 }
 

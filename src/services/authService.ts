@@ -1,5 +1,5 @@
 import { supabase } from '../config/supabase';
-import type { VerifyEmailResponse, SignupResponse, LoginResponse } from '../types/auth';
+import type { VerifyEmailResponse, SignupResponse, LoginResponse, AuthResponse } from '../types/auth';
 import { UserPermission } from '../types/permissions';
 
 /**
@@ -43,6 +43,7 @@ export class AuthService {
             .from('members')
             .insert({
                 id: user.id,
+                email: user.email,
                 username: user.user_metadata?.username,
                 role: 'member',
                 permission: UserPermission.GUEST,
@@ -162,6 +163,200 @@ export class AuthService {
         return {
             message: 'Logged out successfully',
             cookie: this.getCookieString({}, true)
+        };
+    }
+
+    /**
+     * @description Delete user account and associated member profile
+     */
+    static async deleteUser(userId: string): Promise<void> {
+        const { error: memberError } = await supabase
+            .from('members')
+            .delete()
+            .eq('id', userId);
+
+        if (memberError) {
+            throw new Error('Failed to delete member profile');
+        }
+
+        const { error: authError } = await supabase.auth.admin.deleteUser(userId);
+
+        if (authError) {
+            // Se falhar a deleção do auth, tentar restaurar o member
+            await supabase.from('members').insert({
+                id: userId,
+                username: 'deleted_user',
+                role: 'deleted',
+                permission: UserPermission.GUEST,
+                bio: ''
+            });
+            throw new Error('Failed to delete user account');
+        }
+    }
+
+    /**
+     * @description Update user account and member profile
+     */
+    static async updateUser(userId: string, updates: { email?: string; password?: string; userData?: { username?: string } }): Promise<{user: any; member: any}> {
+        // Primeiro, verifica se as atualizações são válidas
+        if (updates.email) {
+            const { data: existingMemberByEmail } = await supabase
+                .from('members')
+                .select('id')
+                .eq('email', updates.email)
+                .neq('id', userId)
+                .single();
+
+            if (existingMemberByEmail) {
+                throw new Error('Email already registered');
+            }
+        }
+
+        if (updates.userData?.username) {
+            const { data: existingMemberByUsername } = await supabase
+                .from('members')
+                .select('id')
+                .eq('username', updates.userData.username)
+                .neq('id', userId)
+                .single();
+
+            if (existingMemberByUsername) {
+                throw new Error('Username already taken');
+            }
+        }
+
+        // Atualiza o usuário no Auth
+        const authUpdates: any = {};
+        if (updates.email) authUpdates.email = updates.email;
+        if (updates.password) authUpdates.password = updates.password;
+        if (updates.userData) authUpdates.data = updates.userData;
+
+        const { data: authUpdate, error: authError } = await supabase.auth.admin.updateUserById(
+            userId,
+            authUpdates
+        );
+
+        if (authError) {
+            throw new Error('Failed to update user account');
+        }
+
+        // Atualiza o member correspondente
+        const memberUpdates: any = {};
+        if (updates.email) memberUpdates.email = updates.email;
+        if (updates.userData?.username) memberUpdates.username = updates.userData.username;
+
+        const { data: memberUpdate, error: memberError } = await supabase
+            .from('members')
+            .update(memberUpdates)
+            .eq('id', userId)
+            .select()
+            .single();
+
+        if (memberError) {
+            // Se falhar a atualização do member, tenta reverter as alterações no auth
+            if (updates.email) {
+                await supabase.auth.admin.updateUserById(userId, {
+                    email: authUpdate.user.email
+                });
+            }
+            throw new Error('Failed to update member profile');
+        }
+
+        return {
+            user: authUpdate.user,
+            member: memberUpdate
+        };
+    }
+
+    /**
+     * @description Update user email
+     */
+    static async updateEmail(userId: string, newEmail: string): Promise<AuthResponse> {
+        // Verifica se o email já está em uso em members
+        const { data: existingMember } = await supabase
+            .from('members')
+            .select('id')
+            .eq('email', newEmail)
+            .single();
+
+        if (existingMember) {
+            throw new Error('Email already in use');
+        }
+
+        // Atualiza o email no Auth
+        const { data: authUpdate, error: authError } = await supabase.auth.admin.updateUserById(
+            userId,
+            { email: newEmail }
+        );
+
+        if (authError) {
+            throw new Error('Failed to update email in auth system');
+        }
+
+        // Atualiza o email no member
+        const { error: memberError } = await supabase
+            .from('members')
+            .update({ email: newEmail })
+            .eq('id', userId);
+
+        if (memberError) {
+            // Tenta reverter a mudança no auth
+            await supabase.auth.admin.updateUserById(userId, {
+                email: authUpdate.user.email
+            });
+            throw new Error('Failed to update email in member profile');
+        }
+
+        return {
+            message: 'Email updated successfully',
+            user: authUpdate.user
+        };
+    }
+
+    /**
+     * @description Update username
+     */
+    static async updateUsername(userId: string, newUsername: string): Promise<AuthResponse> {
+        // Verifica se o username já está em uso
+        const { data: existingMember } = await supabase
+            .from('members')
+            .select('id')
+            .eq('username', newUsername)
+            .single();
+
+        if (existingMember) {
+            throw new Error('Username already taken');
+        }
+
+        // Atualiza o username no Auth metadata
+        const { data: authUpdate, error: authError } = await supabase.auth.admin.updateUserById(
+            userId,
+            { 
+                user_metadata: { username: newUsername }
+            }
+        );
+
+        if (authError) {
+            throw new Error('Failed to update username in auth system');
+        }
+
+        // Atualiza o username no member
+        const { error: memberError } = await supabase
+            .from('members')
+            .update({ username: newUsername })
+            .eq('id', userId);
+
+        if (memberError) {
+            // Tenta reverter a mudança no auth
+            await supabase.auth.admin.updateUserById(userId, {
+                user_metadata: { username: authUpdate.user.user_metadata.username }
+            });
+            throw new Error('Failed to update username in member profile');
+        }
+
+        return {
+            message: 'Username updated successfully',
+            user: authUpdate.user
         };
     }
 }
