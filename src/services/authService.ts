@@ -278,8 +278,9 @@ export class AuthService {
     /**
      * @description Update user email with verification
      */
-    static async updateEmail(userId: string, newEmail: string): Promise<AuthResponse> {
-        // 1. Primeiro verifica se o email já está em uso
+    static async updateEmail(newEmail: string): Promise<AuthResponse> {
+        //TODO: Create frontend route to handle email change confirmation and guide the user to confirm the invite in 
+        //      their new email
         const { data: existingUsers, error: usersError } = await supabase.auth.admin.listUsers();
         if (usersError) {
             throw new Error('Failed to check email availability');
@@ -290,7 +291,6 @@ export class AuthService {
             throw new Error('Email already in use');
         }
 
-        // 2. Inicia o processo de atualização do email com verificação
         const { data, error } = await supabase.auth.updateUser({
             email: newEmail
         });
@@ -305,23 +305,7 @@ export class AuthService {
         };
     }
 
-    /**
-     * @description Verify email change
-     */
-    static async verifyEmailChange(email: string, accessToken: string): Promise<VerifyEmailResponse> {
-        const { data: { user }, error: getUserError } = await supabase.auth.getUser(accessToken);
-        
-        if (getUserError || !user) {
-            throw new Error('User not found');
-        }
 
-        // O email já foi verificado pelo Supabase neste ponto
-        return {
-            status: 'verified',
-            user,
-            accessToken
-        };
-    }
 
     /**
      * @description Update username

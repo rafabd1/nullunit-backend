@@ -59,68 +59,6 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
             }
         }
     })
-    .get('/verify-email-change', async ({ query, set }: AuthContext) => {
-        if (!query?.email || !query?.access_token) {
-            set.status = 400;
-            return { 
-                redirectTo: `${frontendUrl}/auth/error?error=invalid_parameters`,
-                error: 'Missing required query parameters'
-            };
-        }
-
-        try {
-            const result = await AuthService.verifyEmailChange(query.email, query.access_token);
-            
-            // Define o novo cookie de autenticação
-            if (result.accessToken) {
-                set.headers['Set-Cookie'] = AuthService.getCookieString({
-                    access_token: result.accessToken
-                });
-            }
-
-            set.status = 200;
-            return { 
-                redirectTo: `${frontendUrl}/auth/success?message=email_verified`,
-                message: 'Email successfully verified'
-            };
-        } catch (error) {
-            const err = error as Error;
-            set.status = 400;
-            return { 
-                redirectTo: `${frontendUrl}/auth/error?error=${encodeURIComponent(err.message)}`,
-                error: err.message
-            };
-        }
-    }, {
-        detail: {
-            tags: ['auth'],
-            description: 'Verify email change',
-            responses: {
-                '200': {
-                    description: 'Email change verified successfully',
-                    content: {
-                        'application/json': {
-                            schema: t.Object({
-                                redirectTo: t.String(),
-                                message: t.String()
-                            })
-                        }
-                    }
-                },
-                '400': {
-                    description: 'Invalid parameters or verification failed',
-                    content: {
-                        'application/json': {
-                            schema: t.Object({
-                                redirectTo: t.String(),
-                                error: t.String()
-                            })
-                        }
-                    }
-                }
-            }
-        }
-    })
     .post('/signup', ({ body, set }: SignupContext) => 
         handleSignup(body, set), {
             body: authSchemas.signup,
@@ -211,7 +149,7 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
                         message: 'Email is required'
                     };
                 }
-                const result = await AuthService.updateEmail(user.id, body.email);
+                const result = await AuthService.updateEmail(body.email);
                 return result;
             } catch (error) {
                 set.status = 400;
