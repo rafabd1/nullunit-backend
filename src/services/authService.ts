@@ -276,47 +276,50 @@ export class AuthService {
     }
 
     /**
-     * @description Update user email
+     * @description Update user email with verification
      */
     static async updateEmail(userId: string, newEmail: string): Promise<AuthResponse> {
-        // Verifica se o email já está em uso em members
-        const { data: existingMember } = await supabase
-            .from('members')
-            .select('id')
-            .eq('email', newEmail)
-            .single();
+        // 1. Primeiro verifica se o email já está em uso
+        const { data: existingUsers, error: usersError } = await supabase.auth.admin.listUsers();
+        if (usersError) {
+            throw new Error('Failed to check email availability');
+        }
 
-        if (existingMember) {
+        const emailExists = existingUsers.users.some(user => user.email === newEmail);
+        if (emailExists) {
             throw new Error('Email already in use');
         }
 
-        // Atualiza o email no Auth
-        const { data: authUpdate, error: authError } = await supabase.auth.admin.updateUserById(
-            userId,
-            { email: newEmail }
-        );
+        // 2. Inicia o processo de atualização do email com verificação
+        const { data, error } = await supabase.auth.updateUser({
+            email: newEmail
+        });
 
-        if (authError) {
-            throw new Error('Failed to update email in auth system');
-        }
-
-        // Atualiza o email no member
-        const { error: memberError } = await supabase
-            .from('members')
-            .update({ email: newEmail })
-            .eq('id', userId);
-
-        if (memberError) {
-            // Tenta reverter a mudança no auth
-            await supabase.auth.admin.updateUserById(userId, {
-                email: authUpdate.user.email
-            });
-            throw new Error('Failed to update email in member profile');
+        if (error) {
+            throw new Error('Failed to initiate email change process');
         }
 
         return {
-            message: 'Email updated successfully',
-            user: authUpdate.user
+            message: 'Verification emails sent. Please check both your current and new email addresses to confirm the change.',
+            user: data.user
+        };
+    }
+
+    /**
+     * @description Verify email change
+     */
+    static async verifyEmailChange(email: string, accessToken: string): Promise<VerifyEmailResponse> {
+        const { data: { user }, error: getUserError } = await supabase.auth.getUser(accessToken);
+        
+        if (getUserError || !user) {
+            throw new Error('User not found');
+        }
+
+        // O email já foi verificado pelo Supabase neste ponto
+        return {
+            status: 'verified',
+            user,
+            accessToken
         };
     }
 
