@@ -39,12 +39,19 @@ export class AuthService {
             throw new Error('User not found');
         }
 
+        // Tenta encontrar o username nos metadados do usuário
+        // No JWT o username está dentro do user_metadata
+        const username = user.user_metadata?.username || (user.user_metadata as any)?.sub;
+        if (!username) {
+            console.error('User metadata:', user.user_metadata);
+            throw new Error('Username not found in user metadata');
+        }
+
         const { data: member, error: memberError } = await supabase
             .from('members')
             .insert({
                 id: user.id,
-                email: user.email,
-                username: user.user_metadata?.username,
+                username: username,
                 role: 'member',
                 permission: UserPermission.GUEST,
                 bio: ''

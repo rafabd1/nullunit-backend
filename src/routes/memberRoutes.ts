@@ -30,7 +30,6 @@ export const memberRoutes = new Elysia({ prefix: '/members' })
     }, {
         detail: {
             tags: ['members'],
-            summary: 'List all members',
             description: 'Get all registered members',
             responses: {
                 '200': {
@@ -76,7 +75,6 @@ export const memberRoutes = new Elysia({ prefix: '/members' })
     }, {
         detail: {
             tags: ['members'],
-            summary: 'Get member details',
             description: 'Get member by username',
             responses: {
                 '200': {
@@ -149,7 +147,6 @@ export const memberRoutes = new Elysia({ prefix: '/members' })
         body: memberInputSchema,
         detail: {
             tags: ['members'],
-            summary: 'Create member',
             description: 'Create new member profile',
             security: [{ bearerAuth: [] }],
             responses: {
@@ -236,7 +233,6 @@ export const memberRoutes = new Elysia({ prefix: '/members' })
         body: memberUpdateSchema,
         detail: {
             tags: ['members'],
-            summary: 'Update member',
             description: 'Update member profile',
             security: [{ bearerAuth: [] }],
             responses: {
@@ -304,7 +300,6 @@ export const memberRoutes = new Elysia({ prefix: '/members' })
         body: permissionUpdateSchema,
         detail: {
             tags: ['members'],
-            summary: 'Update member permission',
             description: 'Update member permission level (admin only)',
             security: [{ bearerAuth: [] }],
             responses: {

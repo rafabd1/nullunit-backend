@@ -70,7 +70,6 @@ export const articleRoutes = new Elysia({ prefix: '/articles' })
     }, {
         detail: {
             tags: ['articles'],
-            summary: 'Get all article modules',
             description: 'Retrieve all article modules with their sub-articles',
             responses: {
                 '200': {
@@ -109,7 +108,6 @@ export const articleRoutes = new Elysia({ prefix: '/articles' })
     }, {
         detail: {
             tags: ['articles'],
-            summary: 'Get article module',
             description: 'Get article module by its slug',
             responses: {
                 '200': {
@@ -145,7 +143,6 @@ export const articleRoutes = new Elysia({ prefix: '/articles' })
     }, {
         detail: {
             tags: ['articles'],
-            summary: 'Get sub-article',
             description: 'Get sub-article by its slug and parent module slug',
             responses: {
                 '200': {
@@ -182,7 +179,6 @@ export const articleRoutes = new Elysia({ prefix: '/articles' })
         body: moduleInputSchema,
         detail: {
             tags: ['articles'],
-            summary: 'Create article module',
             description: 'Create new article module (requires author permission)',
             security: [{ bearerAuth: [] }],
             responses: {
@@ -241,7 +237,6 @@ export const articleRoutes = new Elysia({ prefix: '/articles' })
         body: subArticleInputSchema,
         detail: {
             tags: ['articles'],
-            summary: 'Create sub-article',
             description: 'Create new sub-article in a module (requires author permission)',
             security: [{ bearerAuth: [] }],
             responses: {
@@ -295,7 +290,6 @@ export const articleRoutes = new Elysia({ prefix: '/articles' })
         body: moduleInputSchema,
         detail: {
             tags: ['articles'],
-            summary: 'Update article module',
             description: 'Update an existing article module (requires author permission)',
             security: [{ bearerAuth: [] }],
             responses: {
@@ -358,7 +352,6 @@ export const articleRoutes = new Elysia({ prefix: '/articles' })
         body: subArticleInputSchema,
         detail: {
             tags: ['articles'],
-            summary: 'Update sub-article',
             description: 'Update an existing sub-article (requires author permission)',
             security: [{ bearerAuth: [] }],
             responses: {
@@ -408,7 +401,6 @@ export const articleRoutes = new Elysia({ prefix: '/articles' })
     }, {
         detail: {
             tags: ['articles'],
-            summary: 'Delete article module',
             description: 'Delete an article module and all its sub-articles (requires author permission)',
             security: [{ bearerAuth: [] }],
             responses: {
@@ -464,7 +456,6 @@ export const articleRoutes = new Elysia({ prefix: '/articles' })
     }, {
         detail: {
             tags: ['articles'],
-            summary: 'Delete sub-article',
             description: 'Delete a sub-article (requires author permission)',
             security: [{ bearerAuth: [] }],
             responses: {
