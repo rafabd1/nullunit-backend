@@ -1,14 +1,20 @@
 import { UserPermission } from './permissions';
 
-export interface MemberWithPermission {
+export interface Member {
     id: string;
+    username: string;
+    email: string;
     permission: UserPermission;
+    bio?: string;
+    avatar_url?: string;
+    created_at: string;
+    updated_at: string;
 }
 
 export interface MemberInputData {
     username: string;
-    role: string;
-    bio: string;
+    role?: string;
+    bio?: string;
     avatar?: File | Buffer;
 }
 
@@ -36,4 +42,9 @@ export interface MemberResponse {
     avatar_url?: string;
     created_at: string;
     updated_at: string;
+}
+
+export interface MemberWithPermission {
+    id: string;
+    permission: UserPermission;
 }

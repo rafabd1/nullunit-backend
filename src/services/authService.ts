@@ -74,16 +74,41 @@ export class AuthService {
      * @description Create new user account
      */
     static async signup(email: string, password: string, username: string): Promise<SignupResponse> {
-        const { data: existingMember } = await supabase
+        // Verifica se o username já está em uso
+        const { data: existingMemberByUsername } = await supabase
             .from('members')
             .select('id')
             .eq('username', username)
             .single();
 
-        if (existingMember) {
+        if (existingMemberByUsername) {
             throw new Error('Username already taken');
         }
 
+        // Verifica se o email já está em uso (tanto na tabela auth quanto na members)
+        const { data: existingMemberByEmail } = await supabase
+            .from('members')
+            .select('id')
+            .eq('email', email)
+            .single();
+
+        if (existingMemberByEmail) {
+            throw new Error('Email already registered');
+        }
+
+        // Verifica se o email já existe no Auth do Supabase
+        const { data: existingUser, error: authCheckError } = await supabase.auth.admin.listUsers();
+        if (authCheckError) {
+            console.error('Error checking existing users:', authCheckError);
+            throw new Error('Error during signup process');
+        }
+
+        const emailExists = existingUser.users.some(user => user.email === email);
+        if (emailExists) {
+            throw new Error('Email already registered');
+        }
+
+        // Se passou por todas as verificações, tenta criar o usuário
         const { data, error } = await supabase.auth.signUp({
             email,
             password,
