@@ -119,7 +119,7 @@ export class AuthService {
             }
         });
 
-        if (error) throw error;
+        if (error || !data.user) throw new Error('Failed to create user account');
 
         return {
             message: 'Verification email sent',

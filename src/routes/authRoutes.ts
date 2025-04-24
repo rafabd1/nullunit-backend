@@ -16,42 +16,49 @@ const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 
 export const authRoutes = new Elysia({ prefix: '/auth' })
     .use(cookie())
-    .get('/verify', ({ query, set }: AuthContext) => 
-        handleVerifyEmail(query, set), {
-            detail: {
-                tags: ['auth'],
-                description: 'Validates user email via token. Returns a JSON object with a URL to redirect the user to. Sets auth cookie on success.',
-                query: authSchemas.verifyQuery,
-                responses: {
-                    '200': {
-                        description: 'Verification successful or user already verified. Redirect URL provided.',
-                        content: {
-                            'application/json': {
-                                schema: t.Object({ redirectTo: t.String() })
-                            }
-                        },
-                        headers: { 
-                            'Set-Cookie': {
-                                schema: { type: 'string' },
-                                description: 'Sets the authentication cookie if verification is successful.'
-                            }
+    .get('/verify', ({ query, set }: AuthContext) => {
+        if (!query?.email || !query?.type || !query?.access_token) {
+            set.status = 400;
+            return { 
+                redirectTo: `${frontendUrl}/auth/error?error=invalid_parameters`,
+                error: 'Missing required query parameters'
+            };
+        }
+        return handleVerifyEmail(query, set);
+    }, {
+        query: authSchemas.verifyQuery,
+        detail: {
+            tags: ['auth'],
+            description: 'Validates user email via token. Returns a JSON object with a URL to redirect the user to. Sets auth cookie on success.',
+            responses: {
+                '200': {
+                    description: 'Verification successful or user already verified. Redirect URL provided.',
+                    content: {
+                        'application/json': {
+                            schema: t.Object({ redirectTo: t.String() })
                         }
                     },
-                    '400': {
-                        description: 'Invalid type or verification error. Redirect URL for error page provided.',
-                        content: {
-                            'application/json': {
-                                schema: t.Object({ 
-                                    redirectTo: t.String(),
-                                    error: t.Optional(t.String()) 
-                                })
-                            }
+                    headers: { 
+                        'Set-Cookie': {
+                            schema: { type: 'string' },
+                            description: 'Sets the authentication cookie if verification is successful.'
+                        }
+                    }
+                },
+                '400': {
+                    description: 'Invalid type or verification error. Redirect URL for error page provided.',
+                    content: {
+                        'application/json': {
+                            schema: t.Object({ 
+                                redirectTo: t.String(),
+                                error: t.Optional(t.String()) 
+                            })
                         }
                     }
                 }
             }
         }
-    )
+    })
     .post('/signup', ({ body, set }: SignupContext) => 
         handleSignup(body, set), {
             body: authSchemas.signup,
@@ -132,13 +139,16 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
             }
         }
     )
-    .patch('/user/email', async ({ body, request, set }: { 
-        body: { email: string },
-        request: Request,
-        set: { status: number, headers: Record<string, string> }
-    }) => {
-        return auth(async ({ user, set }) => {
+    .patch('/user/email', async (context: AuthContext) => {
+        return auth(async ({ user, set, body }) => {
             try {
+                if (!body?.email) {
+                    set.status = 400;
+                    return { 
+                        error: 'Invalid input',
+                        message: 'Email is required'
+                    };
+                }
                 const result = await AuthService.updateEmail(user.id, body.email);
                 return result;
             } catch (error) {
@@ -148,61 +158,17 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
                     message: error instanceof Error ? error.message : 'Failed to update email'
                 };
             }
-        })({ body, request, set });
-    })
-    .patch('/user/username', async ({ body, request, set }: { 
-        body: { username: string },
-        request: Request,
-        set: { status: number, headers: Record<string, string> }
-    }) => {
-        return auth(async ({ user, set }) => {
-            try {
-                const result = await AuthService.updateUsername(user.id, body.username);
-                return result;
-            } catch (error) {
-                set.status = 400;
-                return { 
-                    error: 'Update failed',
-                    message: error instanceof Error ? error.message : 'Failed to update username'
-                };
-            }
-        })({ body, request, set });
-    })
-    .patch('/user/password', async ({ body, request, set }: { 
-        body: { password: string },
-        request: Request,
-        set: { status: number, headers: Record<string, string> }
-    }) => {
-        return auth(async ({ user, set }) => {
-            try {
-                const { data: authUpdate, error: authError } = await supabase.auth.admin.updateUserById(
-                    user.id,
-                    { password: body.password }
-                );
-
-                if (authError) throw authError;
-
-                return {
-                    message: 'Password updated successfully'
-                };
-            } catch (error) {
-                set.status = 400;
-                return { 
-                    error: 'Update failed',
-                    message: error instanceof Error ? error.message : 'Failed to update password'
-                };
-            }
-        })({ body, request, set });
+        })(context);
     }, {
-        body: authSchemas.updateUserSchema,
+        body: authSchemas.updateEmailSchema,
         detail: {
             tags: ['auth'],
-            summary: 'Update user account',
-            description: 'Update user email, password, or username',
+            summary: 'Update user email',
+            description: 'Update user email address',
             security: [{ bearerAuth: [] }],
             responses: {
                 '200': {
-                    description: 'User updated successfully',
+                    description: 'Email updated successfully',
                     content: {
                         'application/json': {
                             schema: authSchemas.updateUserResponse
@@ -210,7 +176,7 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
                     }
                 },
                 '400': {
-                    description: 'Invalid input or update failed',
+                    description: 'Invalid input or email already in use',
                     content: {
                         'application/json': {
                             schema: authSchemas.errorResponse
@@ -228,11 +194,129 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
             }
         }
     })
-    .delete('/user', async ({ request, set }: {
-        request: Request,
-        set: { status: number, headers: Record<string, string> }
-    }) => {
-        return auth(async ({ user, set }: AuthenticatedContext) => {
+    .patch('/user/username', async (context: AuthContext) => {
+        return auth(async ({ user, set, body }) => {
+            try {
+                if (!body?.username) {
+                    set.status = 400;
+                    return { 
+                        error: 'Invalid input',
+                        message: 'Username is required'
+                    };
+                }
+                const result = await AuthService.updateUsername(user.id, body.username);
+                return result;
+            } catch (error) {
+                set.status = 400;
+                return { 
+                    error: 'Update failed',
+                    message: error instanceof Error ? error.message : 'Failed to update username'
+                };
+            }
+        })(context);
+    }, {
+        body: authSchemas.updateUsernameSchema,
+        detail: {
+            tags: ['auth'],
+            summary: 'Update username',
+            description: 'Update user username',
+            security: [{ bearerAuth: [] }],
+            responses: {
+                '200': {
+                    description: 'Username updated successfully',
+                    content: {
+                        'application/json': {
+                            schema: authSchemas.updateUserResponse
+                        }
+                    }
+                },
+                '400': {
+                    description: 'Invalid input or username already taken',
+                    content: {
+                        'application/json': {
+                            schema: authSchemas.errorResponse
+                        }
+                    }
+                },
+                '401': {
+                    description: 'Unauthorized',
+                    content: {
+                        'application/json': {
+                            schema: authSchemas.errorResponse
+                        }
+                    }
+                }
+            }
+        }
+    })
+    .patch('/user/password', async (context: AuthContext) => {
+        return auth(async ({ user, set, body }) => {
+            try {
+                if (!body?.password) {
+                    set.status = 400;
+                    return { 
+                        error: 'Invalid input',
+                        message: 'Password is required'
+                    };
+                }
+                
+                const { error: authError } = await supabase.auth.admin.updateUserById(
+                    user.id,
+                    { password: body.password }
+                );
+
+                if (authError) throw authError;
+
+                return {
+                    message: 'Password updated successfully'
+                };
+            } catch (error) {
+                set.status = 400;
+                return { 
+                    error: 'Update failed',
+                    message: error instanceof Error ? error.message : 'Failed to update password'
+                };
+            }
+        })(context);
+    }, {
+        body: authSchemas.updatePasswordSchema,
+        detail: {
+            tags: ['auth'],
+            summary: 'Update password',
+            description: 'Update user password',
+            security: [{ bearerAuth: [] }],
+            responses: {
+                '200': {
+                    description: 'Password updated successfully',
+                    content: {
+                        'application/json': {
+                            schema: t.Object({
+                                message: t.String()
+                            })
+                        }
+                    }
+                },
+                '400': {
+                    description: 'Invalid password format',
+                    content: {
+                        'application/json': {
+                            schema: authSchemas.errorResponse
+                        }
+                    }
+                },
+                '401': {
+                    description: 'Unauthorized',
+                    content: {
+                        'application/json': {
+                            schema: authSchemas.errorResponse
+                        }
+                    }
+                }
+            }
+        }
+    })
+    .delete('/user', async (context: AuthContext) => {
+        return auth(async ({ user, set }) => {
             try {
                 await AuthService.deleteUser(user.id);
                 return { 
@@ -246,7 +330,7 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
                     message: error instanceof Error ? error.message : 'Failed to delete user'
                 };
             }
-        })({ request, set });
+        })(context);
     }, {
         detail: {
             tags: ['auth'],
@@ -258,7 +342,10 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
                     description: 'User deleted successfully',
                     content: {
                         'application/json': {
-                            schema: authSchemas.deleteUserResponse
+                            schema: t.Object({
+                                message: t.String(),
+                                cookie: t.String()
+                            })
                         }
                     }
                 },
@@ -285,7 +372,7 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
 /**
  * @description Handles email verification and member account creation
  */
-async function handleVerifyEmail(query: AuthContext['query'], set: AuthContext['set']) {
+async function handleVerifyEmail(query: Required<AuthContext>['query'], set: AuthContext['set']) {
     let redirectTo = `${frontendUrl}/auth/error?error=unknown_error`; // Default error URL
     let errorMessage: string | undefined = 'Unknown error';
     try {

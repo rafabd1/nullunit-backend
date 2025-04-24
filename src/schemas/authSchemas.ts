@@ -135,5 +135,27 @@ export const authSchemas = {
     deleteUserResponse: t.Object({
         message: t.String(),
         cookie: t.String()
+    }),
+
+    updateEmailSchema: t.Object({
+        email: t.String({
+            format: 'email',
+            description: 'New email address'
+        })
+    }),
+
+    updateUsernameSchema: t.Object({
+        username: t.String({
+            minLength: 3,
+            maxLength: 30,
+            description: 'New username'
+        })
+    }),
+
+    updatePasswordSchema: t.Object({
+        password: t.String({
+            minLength: 8,
+            description: 'New password'
+        })
     })
 };

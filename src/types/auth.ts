@@ -2,11 +2,6 @@ import { User } from '@supabase/supabase-js';
 import { Member } from './database';
 
 export interface AuthContext {
-    request: Request;
-    set: { 
-        status: number;
-        headers: Record<string, string>;
-    };
     query?: {
         email: string;
         type: string;
@@ -14,17 +9,15 @@ export interface AuthContext {
     };
     body?: any;
     params?: any;
-}
-
-export interface AuthenticatedContext {
-    user: User;
+    request: Request;
     set: { 
         status: number;
         headers: Record<string, string>;
     };
-    request: Request;
-    body?: any;
-    params?: any;
+}
+
+export interface AuthenticatedContext extends Omit<AuthContext, 'query'> {
+    user: User;
 }
 
 export interface SignupContext {
