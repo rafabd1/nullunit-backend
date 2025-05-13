@@ -1,5 +1,6 @@
 // src/schemas/articleSchemas.ts
 import { t } from 'elysia';
+import { tagSchema } from './tagSchemas'; // Importar tagSchema
 
 /**
  * Schema for the Article Module data returned by the API.
@@ -12,6 +13,7 @@ export const articleModuleSchema = t.Object({
     description: t.Optional(t.String()),
     created_at: t.String(),
     updated_at: t.Optional(t.String()),
+    tags: t.Optional(t.Array(tagSchema)), // Tags associadas
     sub_articles: t.Optional(t.Array(t.Object({
         id: t.String(),
         module_id: t.String(),
@@ -19,7 +21,8 @@ export const articleModuleSchema = t.Object({
         title: t.String(),
         content: t.String(),
         created_at: t.String(),
-        updated_at: t.Optional(t.String())
+        updated_at: t.Optional(t.String()),
+        tags: t.Optional(t.Array(tagSchema)) // Tags associadas ao sub-artigo dentro do módulo
     })))
 });
 
@@ -33,7 +36,8 @@ export const subArticleSchema = t.Object({
     title: t.String(),
     content: t.String(),
     created_at: t.String(),
-    updated_at: t.Optional(t.String())
+    updated_at: t.Optional(t.String()),
+    tags: t.Optional(t.Array(tagSchema)) // Tags associadas
 });
 
 /**
@@ -48,6 +52,15 @@ export const moduleInputSchema = t.Object({
     description: t.Optional(t.String({ 
         maxLength: 500,
         description: 'Module description (max 500 characters)'
+    })),
+    tagNames: t.Optional(t.Array(t.String({
+        minLength: 2,
+        maxLength: 50,
+        description: 'Tag name (2-50 characters)'
+    }), { 
+        minItems: 0, 
+        maxItems: 10, 
+        description: 'List of tag names (0-10 tags)' 
     })),
     // slug: t.String({ pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$', minLength: 3, maxLength: 100 }), // Removido
 });
@@ -65,6 +78,15 @@ export const subArticleInputSchema = t.Object({
         minLength: 50,
         description: 'Article content (minimum 50 characters)'
     }),
+    tagNames: t.Optional(t.Array(t.String({
+        minLength: 2,
+        maxLength: 50,
+        description: 'Tag name (2-50 characters)'
+    }), { 
+        minItems: 0, 
+        maxItems: 10, 
+        description: 'List of tag names (0-10 tags)' 
+    })),
     // slug: t.String({ pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$', minLength: 3, maxLength: 150 }), // Removido
 });
 

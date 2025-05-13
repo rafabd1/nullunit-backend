@@ -1,8 +1,13 @@
 import { moduleInputSchema, subArticleInputSchema } from '../schemas/articleSchemas';
+import { Tag } from './tagTypes'; // Importar o tipo Tag
 
 // Input types derived from Schemas for validation consistency
-export type ModuleInputData = typeof moduleInputSchema._type;
-export type SubArticleInputData = typeof subArticleInputSchema._type;
+export type ModuleInputData = typeof moduleInputSchema._type & {
+    tagNames?: string[]; // Tags a serem associadas/atualizadas
+};
+export type SubArticleInputData = typeof subArticleInputSchema._type & {
+    tagNames?: string[]; // Tags a serem associadas/atualizadas
+};
 
 /**
  * @description Interface representing the data structure for creating a module in the database.
@@ -31,6 +36,7 @@ export interface ArticleModule {
     title: string;
     description?: string;
     member_id: string;
+    tags?: Tag[]; // Tags associadas ao módulo
     sub_articles?: SubArticle[];
 }
 
@@ -45,6 +51,7 @@ export interface SubArticle {
     slug: string;
     title: string;
     content: string;
+    tags?: Tag[]; // Tags associadas ao sub-artigo
 }
 
 // Tipos para atualização também usam os tipos derivados dos schemas

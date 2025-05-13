@@ -4,39 +4,6 @@ import { PortfolioService } from '../services/portfolioService';
 import { portfolioInputSchema, portfolioUpdateSchema } from '../schemas/portfolioSchemas';
 import { AuthenticatedContext, RouteContext } from '../types/routes';
 import { PortfolioInputData, PortfolioUpdateData, PortfolioDbInput } from '../types/portfolioTypes';
-import { UserPermission } from '../types/permissions'; // Para checar permissão de AUTHOR
-
-// Mantendo a definição manual que deveria funcionar
-const portfolioResponseOpenAPISchema = {
-    type: 'object',
-    properties: {
-        id: { type: 'string' },
-        member_id: { type: 'string' },
-        created_at: { type: 'string', format: 'date-time' },
-        updated_at: { type: 'string', format: 'date-time', nullable: true },
-        slug: { type: 'string' },
-        title: { type: 'string' },
-        description: { type: 'string', nullable: true },
-        repo_url: { type: 'string', format: 'uri', nullable: true }
-    },
-    required: ['id', 'member_id', 'created_at', 'slug', 'title'],
-    additionalProperties: false
-};
-
-const deleteSuccessResponseSchema = {
-    type: 'object',
-    properties: { 
-        message: { type: 'string' } 
-    },
-    required: ['message'],
-    additionalProperties: false
-};
-
-// Não vamos definir schema de erro por enquanto para simplificar
-
-// Tentar definir os schemas de resposta usando t.* diretamente, 
-// mas sem t.Nullable para os campos opcionais. Swagger pode não ser
-// 100% preciso sobre nulidade, mas pode evitar o erro de tipo.
 
 const portfolioResponseSchema = t.Object({
     id: t.String(),
