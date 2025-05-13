@@ -1,5 +1,6 @@
 import { supabase } from '../config/supabase';
 import { ArticleModule, SubArticle } from '../types/database';
+import { generateSlug } from '../utils/slugUtils';
 
 interface CreateArticleModuleInput {
     member_id: string;
@@ -81,14 +82,37 @@ export class ArticleService {
     /**
      * @description Create a new article module
      */
-    static async createModule(input: CreateArticleModuleInput): Promise<ArticleModule> {
+    static async createModule(input: Omit<CreateArticleModuleInput, 'slug'>): Promise<ArticleModule> {
+        const { member_id, title, description } = input;
+        
+        let slug = generateSlug(title);
+
+        let existingModule = await this.getModuleBySlug(slug);
+        let suffix = 1;
+        while (existingModule) {
+            slug = `${generateSlug(title)}-${suffix}`;
+            existingModule = await this.getModuleBySlug(slug);
+            suffix++;
+        }
+
         const { data, error } = await supabase
             .from('article_modules')
-            .insert(input)
-            .select(this.MODULE_QUERY)
+            .insert({ 
+                member_id,
+                title, 
+                description,
+                slug
+            })
+            .select()
             .single();
 
-        if (error) throw new Error(`Failed to create article module: ${error.message}`);
+        if (error) {
+            console.error('Error creating article module:', error);
+            if (error.code === '23505') {
+                throw new Error('A module with a similar title (resulting in a duplicate slug) already exists. Please try a slightly different title.');
+            }
+            throw new Error('Failed to create article module.');
+        }
         return data;
     }
 
@@ -96,28 +120,60 @@ export class ArticleService {
      * @description Update an article module
      */
     static async updateModule(moduleId: string, input: UpdateArticleModuleInput): Promise<ArticleModule> {
+        const { slug, ...validUpdates } = input as any;
+        if (slug) {
+            console.warn('Attempted to update slug in ArticleService.updateModule. Slug updates are not directly supported here.');
+        }
+        if (Object.keys(validUpdates).length === 0) {
+            const module = await this.getModuleById(moduleId);
+            if (!module) throw new Error('Module not found for update with no changes');
+            return module;
+        }
         const { data, error } = await supabase
             .from('article_modules')
-            .update(input)
+            .update({ ...validUpdates, updated_at: new Date().toISOString() })
             .eq('id', moduleId)
-            .select(this.MODULE_QUERY)
+            .select()
             .single();
 
-        if (error) throw new Error(`Failed to update article module: ${error.message}`);
+        if (error) throw error;
         return data;
     }
 
     /**
      * @description Create a new sub-article
      */
-    static async createSubArticle(input: CreateSubArticleInput): Promise<SubArticle> {
+    static async createSubArticle(input: Omit<CreateSubArticleInput, 'slug'>): Promise<SubArticle> {
+        const { module_id, title, content } = input;
+        
+        let slug = generateSlug(title);
+
+        let existingArticle = await this.getSubArticleByModuleIdAndSlug(module_id, slug);
+        let suffix = 1;
+        while (existingArticle) {
+            slug = `${generateSlug(title)}-${suffix}`;
+            existingArticle = await this.getSubArticleByModuleIdAndSlug(module_id, slug);
+            suffix++;
+        }
+
         const { data, error } = await supabase
             .from('sub_articles')
-            .insert(input)
+            .insert({ 
+                module_id, 
+                title, 
+                content,
+                slug
+            })
             .select()
             .single();
 
-        if (error) throw new Error(`Failed to create sub-article: ${error.message}`);
+        if (error) {
+            console.error('Error creating sub-article:', error);
+            if (error.code === '23505') {
+                throw new Error('A sub-article with a similar title (resulting in a duplicate slug) already exists within this module. Please try a slightly different title.');
+            }
+            throw new Error('Failed to create sub-article.');
+        }
         return data;
     }
 
@@ -186,5 +242,40 @@ export class ArticleService {
             .eq('id', articleId);
 
         if (error) throw new Error(`Failed to delete sub-article: ${error.message}`);
+    }
+
+    static async getSubArticleByModuleIdAndSlug(moduleId: string, slug: string): Promise<SubArticle | null> {
+        const { data, error } = await supabase
+            .from('sub_articles')
+            .select('id')
+            .eq('module_id', moduleId)
+            .eq('slug', slug)
+            .maybeSingle();
+
+        if (error) {
+            console.error('Error checking sub-article slug uniqueness:', error);
+            throw new Error('Database error checking sub-article slug.');
+        }
+        return data;
+    }
+
+    static async getModuleById(id: string): Promise<ArticleModule | null> {
+        const { data, error } = await supabase
+            .from('article_modules')
+            .select('*, sub_articles(*)')
+            .eq('id', id)
+            .single();
+        if (error && error.code !== 'PGRST116') throw error;
+        return data;
+    }
+
+    static async getSubArticleById(id: string): Promise<SubArticle | null> {
+        const { data, error } = await supabase
+            .from('sub_articles')
+            .select('*')
+            .eq('id', id)
+            .single();
+        if (error && error.code !== 'PGRST116') throw error;
+        return data;
     }
 }

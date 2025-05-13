@@ -49,10 +49,7 @@ export const moduleInputSchema = t.Object({
         maxLength: 500,
         description: 'Module description (max 500 characters)'
     })),
-    slug: t.Optional(t.RegExp(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, {
-        error: 'Slug must be lowercase alphanumeric with hyphens',
-        description: 'URL-friendly identifier'
-    }))
+    // slug: t.String({ pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$', minLength: 3, maxLength: 100 }), // Removido
 });
 
 /**
@@ -68,10 +65,7 @@ export const subArticleInputSchema = t.Object({
         minLength: 50,
         description: 'Article content (minimum 50 characters)'
     }),
-    slug: t.Optional(t.RegExp(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, {
-        error: 'Slug must be lowercase alphanumeric with hyphens',
-        description: 'URL-friendly identifier'
-    }))
+    // slug: t.String({ pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$', minLength: 3, maxLength: 150 }), // Removido
 });
 
 /**

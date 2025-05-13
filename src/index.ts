@@ -7,6 +7,7 @@ import { memberRoutes } from './routes/memberRoutes';
 import { authRoutes } from './routes/authRoutes';
 import { articleRoutes } from './routes/articleRoutes';
 import { likeRoutes } from './routes/likeRoutes';
+import { portfolioRoutes } from './routes/portfolioRoutes';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
 const isProduction = process.env.NODE_ENV === 'production';
@@ -32,7 +33,8 @@ const app = new Elysia()
                 { name: 'auth', description: 'Authentication endpoints' },
                 { name: 'members', description: 'Member management endpoints' },
                 { name: 'articles', description: 'Article management endpoints' },
-                { name: 'likes', description: 'Content interaction endpoints' }
+                { name: 'likes', description: 'Content interaction endpoints' },
+                { name: 'portfolio', description: 'Portfolio project endpoints' }
             ],
             components: {
                 securitySchemes: {
@@ -128,6 +130,7 @@ const app = new Elysia()
         .use(memberRoutes)
         .use(articleRoutes)
         .use(likeRoutes)
+        .use(portfolioRoutes)
     )
     .listen(PORT);
 
