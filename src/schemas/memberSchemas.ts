@@ -54,6 +54,12 @@ export const memberInputSchema = t.Object({
 });
 
 export const memberUpdateSchema = t.Object({
+    newUsername: t.Optional(t.String({
+        minLength: 3,
+        maxLength: 30,
+        pattern: '^[a-zA-Z0-9_]+$',
+        description: 'New username (optional). Must be 3-30 characters, alphanumeric and underscores only.'
+    })),
     role: t.Optional(t.String({ 
         minLength: 2, 
         maxLength: 50,

@@ -13,7 +13,8 @@ import {
 import { 
     MemberInputData, 
     MemberUpdateData, 
-    MemberDbInput 
+    MemberDbInput, 
+    MemberProfileUpdate
 } from '../types/memberTypes';
 import { UserPermission } from '../types/permissions';
 
@@ -177,67 +178,68 @@ export const memberRoutes = new Elysia({ prefix: '/members' })
             }
         }
     })
-    .patch('/:username', async ({ params, body, request, set }: RouteContext & { params: { username: string }, body: MemberUpdateData }) => {
+    .patch('/me', async ({ body, request, set }: RouteContext & { body: MemberUpdateData & { newUsername?: string } }) => {
         return auth(async ({ user, set }: AuthenticatedContext) => {
             try {
-                const member = await MemberService.getByUsername(params.username);
-                if (!member) {
-                    set.status = 404;
-                    return {
-                        error: 'Not found',
-                        message: 'Member not found'
-                    };
-                }
+                const userId = user.id;
 
-                if (member.id !== user.id) {
-                    set.status = 403;
-                    return {
-                        error: 'Forbidden',
-                        message: 'You can only update your own profile'
-                    };
-                }
+                const { newUsername, role, bio, avatar } = body;
 
                 const sanitizedData = sanitizeMemberData({
-                    role: body.role,
-                    bio: body.bio
+                    role,
+                    bio
                 });
 
                 let avatarUrl: string | undefined;
-                if (body.avatar) {
-                    if (body.avatar instanceof File) {
-                        const arrayBuffer = await body.avatar.arrayBuffer();
+                if (avatar) {
+                    const avatarPathUsername = user.user_metadata?.username || userId;
+                    if (avatar instanceof File) {
+                        const arrayBuffer = await avatar.arrayBuffer();
                         const buffer = Buffer.from(arrayBuffer);
-                        avatarUrl = await MemberService.handleAvatar(buffer, member.username);
-                    } else if (Buffer.isBuffer(body.avatar)) {
-                        avatarUrl = await MemberService.handleAvatar(body.avatar, member.username);
+                        avatarUrl = await MemberService.handleAvatar(buffer, avatarPathUsername);
+                    } else if (Buffer.isBuffer(avatar)) {
+                        avatarUrl = await MemberService.handleAvatar(avatar, avatarPathUsername);
                     }
                 }
 
-                const updates: Partial<MemberDbInput> = {
+                const updates: MemberProfileUpdate & { newUsername?: string } = {
                     ...(sanitizedData.role && { role: sanitizedData.role }),
                     ...(sanitizedData.bio && { bio: sanitizedData.bio }),
-                    ...(avatarUrl && { avatar_url: avatarUrl })
+                    ...(avatarUrl && { avatar_url: avatarUrl }),
+                    ...(newUsername && { newUsername })
                 };
-                
-                const updatedMember = await MemberService.update(member.id, updates);
+
+                if (Object.keys(updates).length === 0) {
+                    set.status = 400;
+                    return { 
+                        error: 'No changes', 
+                        message: 'No update data provided'
+                    };
+                }
+
+                const updatedMember = await MemberService.update(userId, updates);
                 return updatedMember;
             } catch (error) {
+                if (error instanceof Error && error.message.includes('Username already taken')) {
+                    set.status = 409;
+                    return { error: 'Conflict', message: error.message };
+                }
                 set.status = 400;
                 return {
                     error: 'Update failed',
                     message: error instanceof Error ? error.message : 'Invalid update data'
                 };
             }
-        })({ params, body, request, set });
+        })({ body, request, set });
     }, {
         body: memberUpdateSchema,
         detail: {
             tags: ['members'],
-            description: 'Update member profile',
+            description: 'Update the authenticated user\'s profile (including username)',
             security: [{ bearerAuth: [] }],
             responses: {
                 '200': {
-                    description: 'Member updated successfully',
+                    description: 'Member profile updated successfully',
                     content: {
                         'application/json': {
                             schema: memberSchema
@@ -245,7 +247,15 @@ export const memberRoutes = new Elysia({ prefix: '/members' })
                     }
                 },
                 '400': {
-                    description: 'Invalid update data',
+                    description: 'Invalid update data or no changes provided',
+                    content: {
+                        'application/json': {
+                            schema: errorSchema
+                        }
+                    }
+                },
+                '401': {
+                    description: 'Unauthorized',
                     content: {
                         'application/json': {
                             schema: errorSchema
@@ -253,15 +263,15 @@ export const memberRoutes = new Elysia({ prefix: '/members' })
                     }
                 },
                 '403': {
-                    description: 'Forbidden - not your profile',
+                    description: 'Forbidden',
                     content: {
                         'application/json': {
                             schema: errorSchema
                         }
                     }
                 },
-                '404': {
-                    description: 'Member not found',
+                '409': {
+                    description: 'Username already taken',
                     content: {
                         'application/json': {
                             schema: errorSchema

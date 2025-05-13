@@ -53,16 +53,74 @@ export class MemberService {
 
     /**
      * @description Update member profile
-     */    static async update(id: string, updates: MemberProfileUpdate): Promise<MemberResponse> {        
-        const { data, error } = await supabase
+     */
+    static async update(id: string, updates: MemberProfileUpdate & { newUsername?: string }): Promise<MemberResponse> {
+        const { newUsername, ...profileUpdates } = updates;
+        let currentUsername: string | undefined = undefined;
+
+        // Se newUsername for fornecido, precisamos lidar com a atualização do username
+        if (newUsername) {
+            // 1. Verificar se o novo username já está em uso por outro membro
+            const { data: existingMemberByNewUsername, error: usernameCheckError } = await supabase
+                .from('members')
+                .select('id, username')
+                .eq('username', newUsername)
+                .neq('id', id) // Excluir o próprio usuário da verificação
+                .single();
+
+            if (usernameCheckError && usernameCheckError.code !== 'PGRST116') { // PGRST116 = no rows found
+                throw new Error('Error checking username availability');
+            }
+            if (existingMemberByNewUsername) {
+                throw new Error('Username already taken');
+            }
+
+            // Guardar o username atual para possível rollback no Auth
+            const { data: currentMemberData, error: currentMemberError } = await supabase
+                .from('members')
+                .select('username')
+                .eq('id', id)
+                .single();
+
+            if (currentMemberError || !currentMemberData) {
+                throw new Error('Failed to fetch current member data for username update.');
+            }
+            currentUsername = currentMemberData.username;
+
+            // Adiciona username ao profileUpdates para ser atualizado na tabela members
+            (profileUpdates as any).username = newUsername;
+        }
+
+        // Atualiza a tabela 'members'
+        const { data: updatedMember, error: memberUpdateError } = await supabase
             .from('members')
-            .update(updates)
+            .update(profileUpdates)
             .eq('id', id)
             .select()
             .single();
 
-        if (error) throw error;
-        return data;
+        if (memberUpdateError) {
+            throw memberUpdateError;
+        }
+
+        // Se o username foi alterado, atualiza também no Supabase Auth user_metadata
+        if (newUsername && updatedMember) {
+            const { data: authUser, error: authUpdateError } = await supabase.auth.admin.updateUserById(
+                id,
+                { user_metadata: { username: newUsername } }
+            );
+
+            if (authUpdateError) {
+                // Rollback da alteração do username na tabela 'members'
+                await supabase
+                    .from('members')
+                    .update({ username: currentUsername }) // Reverte para o username antigo
+                    .eq('id', id);
+                throw new Error('Failed to update username in authentication system. Member username has been reverted.');
+            }
+        }
+
+        return updatedMember;
     }
 
     /**

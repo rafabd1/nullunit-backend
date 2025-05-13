@@ -193,60 +193,6 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
             }
         }
     })
-    .patch('/user/username', async (context: AuthContext) => {
-        return auth(async ({ user, set, body }) => {
-            try {
-                if (!body?.username) {
-                    set.status = 400;
-                    return { 
-                        error: 'Invalid input',
-                        message: 'Username is required'
-                    };
-                }
-                const result = await AuthService.updateUsername(user.id, body.username);
-                return result;
-            } catch (error) {
-                set.status = 400;
-                return { 
-                    error: 'Update failed',
-                    message: error instanceof Error ? error.message : 'Failed to update username'
-                };
-            }
-        })(context);
-    }, {
-        body: authSchemas.updateUsernameSchema,
-        detail: {
-            tags: ['auth'],
-            description: 'Update user username',
-            security: [{ bearerAuth: [] }],
-            responses: {
-                '200': {
-                    description: 'Username updated successfully',
-                    content: {
-                        'application/json': {
-                            schema: authSchemas.updateUserResponse
-                        }
-                    }
-                },
-                '400': {
-                    description: 'Invalid input or username already taken',
-                    content: {
-                        'application/json': {
-                            schema: authSchemas.errorResponse
-                        }
-                    }
-                },
-                '401': {
-                    description: 'Unauthorized',
-                    content: {
-                        'application/json': {
-                            schema: authSchemas.errorResponse
-                        }
-                    }
-                }
-            }
-        }
-    })
     .patch('/user/password', async (context: AuthContext) => {
         return auth(async ({ user, set, body }) => {
             try {

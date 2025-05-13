@@ -86,4 +86,27 @@ export class LikeService {
         if (error) throw new Error(`Failed to get likes: ${error.message}`);
         return data;
     }
+
+    /**
+     * @description Get all liked content IDs and types for a user
+     */
+    static async getUserLikedContent(userId: string): Promise<Array<{ content_id: string; content_type: ContentType; liked_at: string }>> {
+        const { data, error } = await supabase
+            .from('likes')
+            .select('content_id, content_type, created_at') // Seleciona os campos relevantes
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            console.error('Error fetching user liked content:', error);
+            throw new Error('Failed to get user liked content');
+        }
+
+        // Mapeia para o formato esperado, especialmente renomeando created_at para liked_at
+        return data.map(like => ({
+            content_id: like.content_id,
+            content_type: like.content_type as ContentType, // Certifica-se de que o tipo está correto
+            liked_at: like.created_at
+        }));
+    }
 }

@@ -36,3 +36,21 @@ export const likeSchemas = {
         })
     })
 };
+
+// Novo schema para a lista de conteúdos curtidos
+export const likedContentSchema = t.Object({
+    content_id: t.String({
+        format: 'uuid',
+        description: 'ID of the liked content'
+    }),
+    content_type: t.String({
+        enum: ['article', 'project'],
+        description: 'Type of the liked content'
+    }),
+    liked_at: t.String({
+        format: 'date-time',
+        description: 'Timestamp when the content was liked'
+    })
+});
+
+export const userLikesResponseSchema = t.Array(likedContentSchema);
