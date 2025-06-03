@@ -1,59 +1,51 @@
-import { moduleInputSchema, subArticleInputSchema } from '../schemas/articleSchemas';
-import { Tag } from './tagTypes'; // Importar o tipo Tag
+import { articleInputSchema } from '../schemas/articleSchemas'; // Será atualizado depois
+import { Tag } from './tagTypes';
 
-// Input types derived from Schemas for validation consistency
-export type ModuleInputData = typeof moduleInputSchema._type & {
-    tagNames?: string[]; // Tags a serem associadas/atualizadas
-};
-export type SubArticleInputData = typeof subArticleInputSchema._type & {
+// Input type derived from Schema for validation consistency
+export type ArticleInputData = typeof articleInputSchema._type & {
     tagNames?: string[]; // Tags a serem associadas/atualizadas
 };
 
 /**
- * @description Interface representing the data structure for creating a module in the database.
+ * @description Interface representing the data structure for creating an article in the database.
+ * published e verified serão definidos pelo serviço, não virão do input.
  */
-export interface ModuleDbInput extends ModuleInputData { // Agora ModuleInputData é o tipo do schema
+export interface ArticleDbInput extends ArticleInputData {
     member_id: string;
-    slug: string; // Será gerado pelo serviço
+    slug?: string; // Torna o slug opcional, pois será gerado pelo serviço
 }
 
 /**
- * @description Interface representing the data structure for creating a sub-article in the database.
+ * @description Interface representing an Article from the database
  */
-export interface SubArticleDbInput extends SubArticleInputData { // Agora SubArticleInputData é o tipo do schema
-    module_id: string;
-    slug: string; // Será gerado pelo serviço
-}
-
-/**
- * @description Interface representing an article module from the database
- */
-export interface ArticleModule {
+export interface Article {
     id: string;
     created_at: string;
     updated_at: string | null;
     slug: string;
     title: string;
-    description?: string;
+    description?: string; // Um resumo/meta-descrição opcional
+    content: string; // Conteúdo completo do artigo
     member_id: string;
-    tags?: Tag[]; // Tags associadas ao módulo
-    sub_articles?: SubArticle[];
+    published: boolean;
+    verified: boolean;
+    tags?: Tag[]; // Tags associadas ao artigo
 }
 
 /**
- * @description Interface representing a sub-article from the database
+ * @description Tipo para atualização. published e verified não são atualizáveis por esta rota.
  */
-export interface SubArticle {
-    id: string;
-    created_at: string;
-    updated_at: string | null;
-    module_id: string;
-    slug: string;
-    title: string;
-    content: string;
-    tags?: Tag[]; // Tags associadas ao sub-artigo
-}
+export type ArticleDbUpdate = Partial<Omit<ArticleInputData, 'tagNames'>> & {
+    tagNames?: string[] | null; // Permitir null para indicar remoção de todas as tags
+    // published e verified foram removidos daqui, não serão atualizáveis via ArticleService.updateArticle
+};
 
-// Tipos para atualização também usam os tipos derivados dos schemas
-export type ModuleDbUpdate = Partial<ModuleInputData>; 
-export type SubArticleDbUpdate = Partial<SubArticleInputData>; 
+// Remover tipos antigos:
+// export type ModuleInputData = typeof moduleInputSchema._type & { ... };
+// export type SubArticleInputData = typeof subArticleInputSchema._type & { ... };
+// export interface ModuleDbInput extends ModuleInputData { ... }
+// export interface SubArticleDbInput extends SubArticleInputData { ... }
+// export interface ArticleModule { ... }
+// export interface SubArticle { ... }
+// export type ModuleDbUpdate = Partial<ModuleInputData>;
+// export type SubArticleDbUpdate = Partial<SubArticleInputData>;

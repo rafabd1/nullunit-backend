@@ -25,8 +25,8 @@ const sanitizeTitle = (title: string): string => {
     const sanitized = escapeHTML(title.trim())
         .replace(/\s+/g, ' ');
 
-    if (sanitized.length < 3 || sanitized.length > 100) {
-        throw new Error('Title must be between 3 and 100 characters');
+    if (sanitized.length < 3 || sanitized.length > 150) {
+        throw new Error('Title must be between 3 and 150 characters');
     }
 
     return sanitized;
@@ -36,7 +36,7 @@ const sanitizeTitle = (title: string): string => {
  * @description Sanitizes and validates description
  */
 const sanitizeDescription = (description?: string): string | undefined => {
-    if (!description) return undefined;
+    if (description === null || description === undefined) return undefined;
 
     const sanitized = escapeHTML(description.trim())
         .replace(/\s+/g, ' ');
@@ -79,33 +79,31 @@ const sanitizeContent = (content: string): string => {
 };
 
 /**
- * @description Sanitizes article module data
+ * @description Input type for article data from user (before db specific fields are added)
  */
-export const sanitizeModuleData = (data: {
+interface ArticleUserData {
     title: string;
-    slug?: string;
     description?: string;
-}) => {
-    const title = sanitizeTitle(data.title);
+    content: string;
+    // tagNames, published, verified are passed through, not sanitized here
+}
+
+/**
+ * @description Sanitizes unified article data from user input.
+ * tagNames, published, and verified are not sanitized here but passed through.
+ */
+const sanitizeArticleData = <T extends ArticleUserData>(data: T): Omit<T, 'tagNames' | 'published' | 'verified'> & { title: string; description?: string; content: string } => {
+    const sanitizedTitle = sanitizeTitle(data.title);
+    const sanitizedDescription = data.description ? sanitizeDescription(data.description) : undefined;
+    const sanitizedContent = sanitizeContent(data.content);
+
     return {
-        title,
-        slug: data.slug ? sanitizeSlug(data.slug) : sanitizeSlug(title),
-        description: data.description ? sanitizeDescription(data.description) : undefined
+        ...data, // Pass through other fields like tagNames, published, verified
+        title: sanitizedTitle,
+        description: sanitizedDescription,
+        content: sanitizedContent,
     };
 };
 
-/**
- * @description Sanitizes sub-article data
- */
-export const sanitizeSubArticleData = (data: {
-    title: string;
-    slug?: string;
-    content: string;
-}) => {
-    const title = sanitizeTitle(data.title);
-    return {
-        title,
-        slug: data.slug ? sanitizeSlug(data.slug) : sanitizeSlug(title),
-        content: sanitizeContent(data.content)
-    };
-};
+// Exportar as funções individuais e a composta
+export { sanitizeSlug, sanitizeTitle, sanitizeDescription, sanitizeContent, sanitizeArticleData };

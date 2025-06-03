@@ -1,74 +1,76 @@
 import { supabase } from '../config/supabase';
-import { 
-    ArticleModule, 
-    SubArticle, 
-    ModuleDbInput, 
-    SubArticleDbInput, 
-    ModuleDbUpdate, 
-    SubArticleDbUpdate 
+import {
+    Article,
+    ArticleDbInput,
+    ArticleDbUpdate
 } from '../types/articleTypes';
 import { generateSlug } from '../utils/slugUtils';
 import { TagService } from './tagService';
 import { Tag } from '../types/tagTypes';
-import { DatabaseError } from '../utils/errors';
+import { DatabaseError, NotFoundError, ForbiddenError } from '../utils/errors';
 
-const TABLE_MODULE_TAGS = 'article_module_tags';
-const TABLE_SUB_ARTICLE_TAGS = 'sub_article_tags';
+const TABLE_ARTICLES = 'articles';
+const TABLE_ARTICLE_TAGS = 'article_tags';
 
 /**
  * @description Service layer for article management
  */
 export class ArticleService {
-    private static readonly SUB_ARTICLE_FIELDS = `
-        id,
-        module_id,
-        slug,
-        title,
-        content,
-        created_at,
-        updated_at
-    `;
-
-    private static readonly MODULE_QUERY = `
+    private static readonly ARTICLE_FIELDS_SELECT = `
         id,
         member_id,
         slug,
         title,
         description,
+        content,
+        published,
+        verified,
         created_at,
-        updated_at,
-        sub_articles (
-            ${this.SUB_ARTICLE_FIELDS.split('\n').map(l => l.trim()).filter(Boolean).join(',')}
-        )
+        updated_at
     `;
 
-    private static async _getModuleTags(moduleId: string): Promise<Tag[]> {
+    /**
+     * @description Fetches tags for a given article ID.
+     */
+    private static async _getArticleTags(articleId: string): Promise<Tag[]> {
         try {
-            return await TagService.getTagsByModuleId(moduleId);
-        } catch (error) {
-            console.error(`Error fetching tags for module ${moduleId}:`, error);
-            return [];
-        }
-    }
+            const { data: tagRelations, error: relationError } = await supabase
+                .from(TABLE_ARTICLE_TAGS)
+                .select('tag_id')
+                .eq('article_id', articleId);
 
-    private static async _getSubArticleTags(subArticleId: string): Promise<Tag[]> {
-        try {
-            return await TagService.getTagsBySubArticleId(subArticleId);
-        } catch (error) {
-            console.error(`Error fetching tags for sub-article ${subArticleId}:`, error);
-            return [];
-        }
-    }
-
-    private static async _manageTags(tagNames: string[] | undefined | null, entityId: string, associationTable: string, idFieldName: string): Promise<string[]> {
-        if (!tagNames || tagNames.length === 0) {
-            const { error: deleteError } = await supabase
-                .from(associationTable)
-                .delete()
-                .eq(idFieldName, entityId);
-            if (deleteError) {
-                console.error(`Error clearing tags for ${idFieldName} ${entityId} in ${associationTable}:`, deleteError);
+            if (relationError) {
+                console.error(`Error fetching tag relations for article ${articleId}:`, relationError);
+                return [];
             }
+            if (!tagRelations || tagRelations.length === 0) return [];
+
+            const tagIds = tagRelations.map(r => r.tag_id);
+            return await TagService.getTagsByIds(tagIds);
+
+        } catch (error) {
+            console.error(`Error fetching tags for article ${articleId}:`, error);
+            return [];
+        }
+    }
+
+    /**
+     * @description Manages (clears and inserts) tag associations for an entity.
+     */
+    private static async _manageTags(tagNames: string[] | undefined | null, entityId: string): Promise<string[]> {
+        const idFieldName = 'article_id';
+
+        const { error: deleteError } = await supabase
+            .from(TABLE_ARTICLE_TAGS)
+            .delete()
+            .eq(idFieldName, entityId);
+
+        if (deleteError) {
+            console.error(`Error clearing old tags for ${idFieldName} ${entityId} in ${TABLE_ARTICLE_TAGS}:`, deleteError);
+            throw new DatabaseError(`Failed to clear old tags: ${deleteError.message}`);
+        }
+
+        if (!tagNames || tagNames.length === 0) {
             return [];
         }
 
@@ -79,27 +81,17 @@ export class ArticleService {
         const tags = await Promise.all(tagPromises);
         const tagIds = tags.map(tag => tag.id);
 
-        const { error: deleteError } = await supabase
-            .from(associationTable)
-            .delete()
-            .eq(idFieldName, entityId);
-        
-        if (deleteError) {
-            console.error(`Error clearing old tags for ${idFieldName} ${entityId} in ${associationTable}:`, deleteError);
-            throw new DatabaseError(`Failed to clear old tags: ${deleteError.message}`);
-        }
-
         const associations = tagIds.map(tagId => ({
             [idFieldName]: entityId,
             tag_id: tagId
         }));
 
         const { error: insertError } = await supabase
-            .from(associationTable)
+            .from(TABLE_ARTICLE_TAGS)
             .insert(associations);
 
         if (insertError) {
-            console.error(`Error inserting new tags for ${idFieldName} ${entityId} in ${associationTable}:`, insertError);
+            console.error(`Error inserting new tags for ${idFieldName} ${entityId} in ${TABLE_ARTICLE_TAGS}:`, insertError);
             throw new DatabaseError(`Failed to insert new tags: ${insertError.message}`);
         }
 
@@ -107,352 +99,188 @@ export class ArticleService {
     }
 
     /**
-     * @description Get all article modules with their sub-articles and tags
+     * @description Get all published articles with their tags.
+     * TODO: Add pagination, filtering by tags, etc. in the future.
      */
-    static async getAllModules(): Promise<ArticleModule[]> {
+    static async getAllArticles(): Promise<Article[]> {
         const { data, error } = await supabase
-            .from('article_modules')
-            .select(this.MODULE_QUERY)
+            .from(TABLE_ARTICLES)
+            .select(this.ARTICLE_FIELDS_SELECT)
+            .eq('published', true)
             .order('created_at', { ascending: false });
 
-        if (error) throw new DatabaseError(`Failed to fetch article modules: ${error.message}`);
+        if (error) throw new DatabaseError(`Failed to fetch articles: ${error.message}`);
         if (!data) return [];
 
-        const modulesWithTags = await Promise.all(data.map(async (module) => ({
-            ...module,
-            tags: await this._getModuleTags(module.id),
-            sub_articles: module.sub_articles 
-                ? await Promise.all(module.sub_articles.map(async (sub) => ({
-                    ...sub,
-                    tags: await this._getSubArticleTags(sub.id)
-                  })))
-                : []
+        const articlesWithTags = await Promise.all(data.map(async (article) => ({
+            ...article,
+            tags: await this._getArticleTags(article.id)
         })));
 
-        return modulesWithTags;
+        return articlesWithTags;
     }
 
     /**
-     * @description Get a specific article module by its slug, including tags
+     * @description Get a specific article by its slug, including tags.
+     * It fetches the article regardless of its published status for direct access.
      */
-    static async getModuleBySlug(slug: string): Promise<ArticleModule | null> {
+    static async getArticleBySlug(slug: string): Promise<Article | null> {
         const { data, error } = await supabase
-            .from('article_modules')
-            .select(this.MODULE_QUERY)
+            .from(TABLE_ARTICLES)
+            .select(this.ARTICLE_FIELDS_SELECT)
             .eq('slug', slug)
             .maybeSingle();
 
         if (error) {
-            throw new DatabaseError(`Failed to fetch article module: ${error.message}`);
+            throw new DatabaseError(`Failed to fetch article by slug: ${error.message}`);
         }
         if (!data) {
             return null;
         }
 
-        const moduleWithTags = {
+        return {
             ...data,
-            tags: await this._getModuleTags(data.id),
-            sub_articles: data.sub_articles 
-                ? await Promise.all(data.sub_articles.map(async (sub) => ({
-                    ...sub,
-                    tags: await this._getSubArticleTags(sub.id)
-                  })))
-                : []
+            tags: await this._getArticleTags(data.id)
         };
-
-        return moduleWithTags;
+    }
+    
+    private static async getArticleBySlugInternal(slug: string): Promise<Pick<Article, 'id' | 'slug' | 'member_id'> | null> {
+        const { data, error } = await supabase
+            .from(TABLE_ARTICLES)
+            .select('id, slug, member_id')
+            .eq('slug', slug)
+            .maybeSingle();
+        if (error) {
+            console.error(`Internal error fetching article by slug ${slug}:`, error);
+            return null;
+        }
+        return data;
     }
 
     /**
-     * @description Create a new article module, managing tags
+     * @description Create a new article, managing tags.
      */
-    static async createModule(input: ModuleDbInput): Promise<ArticleModule> { 
-        const { member_id, title, description, tagNames } = input;
+    static async createArticle(input: ArticleDbInput): Promise<Article> {
+        const { member_id, title, description, content, tagNames } = input;
         
         let slug = generateSlug(title);
-        let existingModule = await this.getModuleBySlugInternal(slug);
-        let suffix = 1;
-        while (existingModule) {
-            slug = `${generateSlug(title)}-${suffix}`;
-            existingModule = await this.getModuleBySlugInternal(slug);
-            suffix++;
-        }
-
-        const { data: newModule, error } = await supabase
-            .from('article_modules')
-            .insert({ 
-                member_id,
-                title, 
-                description,
-                slug
-            })
-            .select()
-            .single();
-
-        if (error || !newModule) {
-            console.error('Error creating article module:', error);
-            if (error?.code === '23505') {
-                throw new DatabaseError('A module with a similar title (resulting in a duplicate slug) already exists. Please try a slightly different title.');
-            }
-            throw new DatabaseError('Failed to create article module.');
-        }
-
-        const tagIds = await this._manageTags(tagNames, newModule.id, TABLE_MODULE_TAGS, 'article_module_id');
-        const tags = tagIds.length > 0 ? await TagService.getTagsByIds(tagIds) : []; 
-
-        return { ...newModule, tags, sub_articles: [] };
-    }
-
-    /**
-     * @description Update an article module, managing tags
-     */
-    static async updateModule(moduleId: string, input: ModuleDbUpdate): Promise<ArticleModule> { 
-        const { tagNames, ...moduleUpdates } = input;
-        
-        if ('slug' in moduleUpdates) {
-            console.warn('Attempted to update slug in ArticleService.updateModule. Slug updates are not directly supported here.');
-            delete (moduleUpdates as any).slug;
-        }
-
-        let updatedModuleData: ArticleModule | null = null;
-
-        if (Object.keys(moduleUpdates).length > 0) {
-            const { data, error } = await supabase
-                .from('article_modules')
-                .update({ ...moduleUpdates, updated_at: new Date().toISOString() })
-                .eq('id', moduleId)
-                .select(this.MODULE_QUERY)
-                .single();
-
-            if (error) {
-                 if (error.code === 'PGRST116') throw new DatabaseError('Module not found for update.');
-                 throw new DatabaseError(`Failed to update module data: ${error.message}`);
-            }
-            updatedModuleData = data;
-        } else {
-             updatedModuleData = await this.getModuleByIdInternal(moduleId); 
-             if (!updatedModuleData) throw new DatabaseError('Module not found.');
-        }
-
-        const tagIds = await this._manageTags(tagNames, moduleId, TABLE_MODULE_TAGS, 'article_module_id');
-        const tags = tagIds.length > 0 ? await TagService.getTagsByIds(tagIds) : [];
-        
-        const subArticles = updatedModuleData.sub_articles 
-            ? await Promise.all(updatedModuleData.sub_articles.map(async (sub) => ({
-                ...sub,
-                tags: await this._getSubArticleTags(sub.id)
-              })))
-            : [];
-
-        return { ...updatedModuleData, tags, sub_articles: subArticles };
-    }
-
-    /**
-     * @description Create a new sub-article, managing tags
-     */
-    static async createSubArticle(input: SubArticleDbInput): Promise<SubArticle> { 
-        const { module_id, title, content, tagNames } = input;
-        
-        let slug = generateSlug(title);
-        let existingArticle = await this.getSubArticleByModuleIdAndSlug(module_id, slug);
+        let existingArticle = await this.getArticleBySlugInternal(slug);
         let suffix = 1;
         while (existingArticle) {
             slug = `${generateSlug(title)}-${suffix}`;
-            existingArticle = await this.getSubArticleByModuleIdAndSlug(module_id, slug);
+            existingArticle = await this.getArticleBySlugInternal(slug);
             suffix++;
         }
 
-        const { data: newSubArticle, error } = await supabase
-            .from('sub_articles')
-            .insert({ 
-                module_id, 
-                title, 
-                content,
-                slug
-            })
-            .select(this.SUB_ARTICLE_FIELDS)
+        const articleToInsert = {
+            member_id,
+            title,
+            description,
+            content,
+            slug,
+            published: false,
+            verified: false,
+        };
+
+        const { data: newArticle, error } = await supabase
+            .from(TABLE_ARTICLES)
+            .insert(articleToInsert)
+            .select(this.ARTICLE_FIELDS_SELECT)
             .single();
 
-        if (error || !newSubArticle) {
-            console.error('Error creating sub-article:', error);
+        if (error || !newArticle) {
+            console.error('Error creating article:', error);
             if (error?.code === '23505') {
-                throw new DatabaseError('A sub-article with a similar title (resulting in a duplicate slug) already exists within this module. Please try a slightly different title.');
+                throw new DatabaseError('An article with a similar title (resulting in a duplicate slug) already exists. Please try a slightly different title.');
             }
-            throw new DatabaseError('Failed to create sub-article.');
+            throw new DatabaseError('Failed to create article.');
         }
 
-        const tagIds = await this._manageTags(tagNames, newSubArticle.id, TABLE_SUB_ARTICLE_TAGS, 'sub_article_id');
-        const tags = tagIds.length > 0 ? await TagService.getTagsByIds(tagIds) : [];
+        const newTagIds = await this._manageTags(tagNames, newArticle.id);
+        const tags = newTagIds.length > 0 ? await TagService.getTagsByIds(newTagIds) : [];
 
-        return { ...newSubArticle, tags };
+        return { ...newArticle, tags } as Article;
     }
 
     /**
-     * @description Get a specific sub-article by its slug and module slug, including tags
+     * @description Update an article, managing tags. User must be the author.
+     * Slugs are not updatable through this method to preserve permalinks.
      */
-    static async getSubArticleBySlug(moduleSlug: string, subArticleSlug: string): Promise<SubArticle | null> {
-        const { data: module, error: moduleError } = await supabase
-            .from('article_modules')
-            .select('id')
-            .eq('slug', moduleSlug)
-            .maybeSingle();
+    static async updateArticle(articleSlug: string, input: ArticleDbUpdate, requestingMemberId: string): Promise<Article> {
+        const { tagNames, ...articleUpdates } = input;
 
-        if (moduleError) throw new DatabaseError(`Failed to fetch module: ${moduleError.message}`);
-        if (!module) return null;
-
-        const { data, error } = await supabase
-            .from('sub_articles')
-            .select(this.SUB_ARTICLE_FIELDS)
-            .eq('module_id', module.id)
-            .eq('slug', subArticleSlug)
-            .maybeSingle();
-
-        if (error) throw new DatabaseError(`Failed to fetch sub-article: ${error.message}`);
-        if (!data) return null;
-
-        const tags = await this._getSubArticleTags(data.id);
-
-        return { ...data, tags };
-    }
-
-    /**
-     * @description Delete an article module and all its sub-articles
-     * (ON DELETE CASCADE should handle sub-articles and tag associations)
-     */
-    static async deleteModule(moduleId: string): Promise<void> {
-        const { error } = await supabase
-            .from('article_modules')
-            .delete()
-            .eq('id', moduleId);
-
-        if (error) throw new DatabaseError(`Failed to delete article module: ${error.message}`);
-    }
-
-    /**
-     * @description Update a sub-article, managing tags
-     */
-    static async updateSubArticle(articleId: string, input: SubArticleDbUpdate): Promise<SubArticle> { 
-         const { tagNames, ...subArticleUpdates } = input;
-
-        if ('slug' in subArticleUpdates) {
-            console.warn('Attempted to update slug in ArticleService.updateSubArticle. Slug updates are not directly supported here.');
-            delete (subArticleUpdates as any).slug;
+        const existingArticle = await this.getArticleBySlugInternal(articleSlug);
+        if (!existingArticle) {
+            throw new NotFoundError('Article not found.');
+        }
+        if (existingArticle.member_id !== requestingMemberId) {
+            throw new ForbiddenError('You do not have permission to update this article.');
         }
 
-        let updatedSubArticleData: SubArticle | null = null;
+        delete (articleUpdates as any).published;
+        delete (articleUpdates as any).verified;
 
-        if (Object.keys(subArticleUpdates).length > 0) {
-             const { data, error } = await supabase
-                .from('sub_articles')
-                .update({ ...subArticleUpdates, updated_at: new Date().toISOString() })
-                .eq('id', articleId)
-                .select(this.SUB_ARTICLE_FIELDS)
+        const hasMeaningfulUpdate = Object.keys(articleUpdates).length > 0;
+
+        if (!hasMeaningfulUpdate && (tagNames === undefined)) {
+            const currentArticleData = await this.getArticleBySlug(articleSlug);
+            if (!currentArticleData) throw new NotFoundError('Article not found after no-op update check.');
+            return currentArticleData;
+        }
+        
+        let updatedArticleData: Omit<Article, 'tags'> | null = null;
+
+        if (hasMeaningfulUpdate) {
+            const { data, error } = await supabase
+                .from(TABLE_ARTICLES)
+                .update({ ...articleUpdates, updated_at: new Date().toISOString() })
+                .eq('id', existingArticle.id)
+                .select(this.ARTICLE_FIELDS_SELECT)
                 .single();
-            
-             if (error) {
-                 if (error.code === 'PGRST116') throw new DatabaseError('Sub-article not found for update.');
-                 throw new DatabaseError(`Failed to update sub-article data: ${error.message}`);
-             }
-             updatedSubArticleData = data;
+
+            if (error) {
+                 if (error.code === 'PGRST116') throw new NotFoundError('Article not found for update.');
+                 throw new DatabaseError(`Failed to update article data: ${error.message}`);
+            }
+            updatedArticleData = data;
         } else {
-             updatedSubArticleData = await this.getSubArticleByIdInternal(articleId);
-             if (!updatedSubArticleData) throw new DatabaseError('Sub-article not found.');
+            const currentData = await supabase
+                .from(TABLE_ARTICLES)
+                .select(this.ARTICLE_FIELDS_SELECT)
+                .eq('id', existingArticle.id)
+                .single();
+            if (currentData.error || !currentData.data) throw new DatabaseError('Failed to fetch article data for tag-only update.');
+            updatedArticleData = currentData.data;
         }
 
-        const tagIds = await this._manageTags(tagNames, articleId, TABLE_SUB_ARTICLE_TAGS, 'sub_article_id');
-        const tags = tagIds.length > 0 ? await TagService.getTagsByIds(tagIds) : [];
-
-        return { ...updatedSubArticleData, tags };
+        const updatedTagIds = await this._manageTags(tagNames, existingArticle.id);
+        const tags = updatedTagIds.length > 0 ? await TagService.getTagsByIds(updatedTagIds) : [];
+        
+        return { ...updatedArticleData!, tags } as Article;
     }
 
     /**
-     * @description Delete a sub-article
-     * (ON DELETE CASCADE should handle tag associations)
+     * @description Delete an article. User must be the author.
      */
-    static async deleteSubArticle(articleId: string): Promise<void> {
+    static async deleteArticle(articleSlug: string, requestingMemberId: string): Promise<void> {
+        const article = await this.getArticleBySlugInternal(articleSlug);
+
+        if (!article) {
+            throw new NotFoundError('Article not found.');
+        }
+
+        if (article.member_id !== requestingMemberId) {
+            throw new ForbiddenError('You do not have permission to delete this article.');
+        }
+
         const { error } = await supabase
-            .from('sub_articles')
+            .from(TABLE_ARTICLES)
             .delete()
-            .eq('id', articleId);
+            .eq('id', article.id);
 
-        if (error) throw new DatabaseError(`Failed to delete sub-article: ${error.message}`);
-    }
-
-    private static async getModuleBySlugInternal(slug: string): Promise<ArticleModule | null> {
-         const { data, error } = await supabase
-            .from('article_modules')
-            .select('*')
-            .eq('slug', slug)
-            .maybeSingle();
         if (error) {
-            console.error(`Internal error fetching module by slug ${slug}:`, error);
-            return null;
+            console.error(`Failed to delete article ${article.id}:`, error);
+            throw new DatabaseError(`Failed to delete article: ${error.message}`);
         }
-        return data;
-    }
-    
-    private static async getModuleByIdInternal(id: string): Promise<ArticleModule | null> {
-         const { data, error } = await supabase
-            .from('article_modules')
-            .select(this.MODULE_QUERY)
-            .eq('id', id)
-            .maybeSingle();
-        if (error) {
-            console.error(`Internal error fetching module by ID ${id}:`, error);
-            return null;
-        }
-        return data;
-    }
-
-    static async getSubArticleByModuleIdAndSlugInternal(moduleId: string, slug: string): Promise<SubArticle | null> {
-        const { data, error } = await supabase
-            .from('sub_articles')
-            .select(this.SUB_ARTICLE_FIELDS)
-            .eq('module_id', moduleId)
-            .eq('slug', slug)
-            .maybeSingle();
-        
-        if (error) {
-            console.error(`Internal error fetching sub-article by module ${moduleId} and slug ${slug}:`, error);
-            return null;
-        }
-        return data;
-    }
-
-     private static async getSubArticleByIdInternal(id: string): Promise<SubArticle | null> {
-        const { data, error } = await supabase
-            .from('sub_articles')
-            .select(this.SUB_ARTICLE_FIELDS)
-            .eq('id', id)
-            .maybeSingle();
-        
-        if (error) {
-            console.error(`Internal error fetching sub-article by ID ${id}:`, error);
-            return null;
-        }
-        return data;
-    }
-
-    static async getModuleById(id: string): Promise<ArticleModule | null> {
-        const moduleData = await this.getModuleByIdInternal(id);
-        if (!moduleData) return null;
-
-        const tags = await this._getModuleTags(moduleData.id);
-        const subArticlesWithTags = moduleData.sub_articles 
-            ? await Promise.all(moduleData.sub_articles.map(async (sub) => ({
-                ...sub,
-                tags: await this._getSubArticleTags(sub.id)
-              })))
-            : [];
-
-        return { ...moduleData, tags, sub_articles: subArticlesWithTags };
-    }
-
-    static async getSubArticleById(id: string): Promise<SubArticle | null> {
-        const subArticleData = await this.getSubArticleByIdInternal(id);
-        if (!subArticleData) return null;
-
-        const tags = await this._getSubArticleTags(subArticleData.id);
-        return { ...subArticleData, tags };
     }
 }

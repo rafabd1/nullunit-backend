@@ -3,91 +3,56 @@ import { t } from 'elysia';
 import { tagSchema } from './tagSchemas'; // Importar tagSchema
 
 /**
- * Schema for the Article Module data returned by the API.
+ * Schema for the unified Article data returned by the API.
  */
-export const articleModuleSchema = t.Object({
-    id: t.String(),
-    member_id: t.String(),
-    slug: t.String(),
-    title: t.String(),
-    description: t.Optional(t.String()),
-    created_at: t.String(),
-    updated_at: t.Optional(t.String()),
-    tags: t.Optional(t.Array(tagSchema)), // Tags associadas
-    sub_articles: t.Optional(t.Array(t.Object({
-        id: t.String(),
-        module_id: t.String(),
-        slug: t.String(),
-        title: t.String(),
-        content: t.String(),
-        created_at: t.String(),
-        updated_at: t.Optional(t.String()),
-        tags: t.Optional(t.Array(tagSchema)) // Tags associadas ao sub-artigo dentro do módulo
-    })))
+export const articleSchema = t.Object({
+    id: t.String({ format: 'uuid', description: 'Article unique identifier' }),
+    member_id: t.String({ format: 'uuid', description: 'Author member ID' }),
+    slug: t.String({ description: 'URL-friendly slug' }),
+    title: t.String({ description: 'Article title' }),
+    description: t.Optional(t.String({ description: 'Optional short description or summary' })),
+    content: t.String({ description: 'Full article content (e.g., Markdown)' }),
+    created_at: t.String({ format: 'date-time', description: 'Creation timestamp' }),
+    updated_at: t.Optional(
+        t.String({
+            format: 'date-time',
+            description: 'Last update timestamp (nullable)',
+            nullable: true // Indicação para OpenAPI que o valor pode ser nulo
+        })
+    ),
+    published: t.Boolean({ description: 'Publication status' }),
+    verified: t.Boolean({ description: 'Verification status' }),
+    tags: t.Optional(t.Array(tagSchema, { description: 'Tags associated with the article' }))
 });
 
 /**
- * Schema for the Sub-Article data returned by the API.
+ * Schema for validating input when creating or updating an Article.
  */
-export const subArticleSchema = t.Object({
-    id: t.String(),
-    module_id: t.String(),
-    slug: t.String(),
-    title: t.String(),
-    content: t.String(),
-    created_at: t.String(),
-    updated_at: t.Optional(t.String()),
-    tags: t.Optional(t.Array(tagSchema)) // Tags associadas
-});
-
-/**
- * Schema for validating input when creating or updating an Article Module.
- */
-export const moduleInputSchema = t.Object({
-    title: t.String({ 
-        minLength: 3, 
-        maxLength: 100,
-        description: 'Module title (3-100 characters)'
-    }),
-    description: t.Optional(t.String({ 
-        maxLength: 500,
-        description: 'Module description (max 500 characters)'
-    })),
-    tagNames: t.Optional(t.Array(t.String({
-        minLength: 2,
-        maxLength: 50,
-        description: 'Tag name (2-50 characters)'
-    }), { 
-        minItems: 0, 
-        maxItems: 10, 
-        description: 'List of tag names (0-10 tags)' 
-    })),
-    // slug: t.String({ pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$', minLength: 3, maxLength: 100 }), // Removido
-});
-
-/**
- * Schema for validating input when creating or updating a Sub-Article.
- */
-export const subArticleInputSchema = t.Object({
-    title: t.String({ 
-        minLength: 3, 
-        maxLength: 150,
+export const articleInputSchema = t.Object({
+    title: t.String({
+        minLength: 3,
+        maxLength: 150, // Ajustado de 100 para títulos potencialmente mais longos
         description: 'Article title (3-150 characters)'
     }),
-    content: t.String({ 
-        minLength: 50,
+    description: t.Optional(t.String({
+        maxLength: 500,
+        description: 'Optional article description (max 500 characters)'
+    })),
+    content: t.String({
+        minLength: 50, // Manter um mínimo para conteúdo substancial
         description: 'Article content (minimum 50 characters)'
     }),
     tagNames: t.Optional(t.Array(t.String({
         minLength: 2,
         maxLength: 50,
         description: 'Tag name (2-50 characters)'
-    }), { 
-        minItems: 0, 
-        maxItems: 10, 
-        description: 'List of tag names (0-10 tags)' 
+    }), {
+        minItems: 0,
+        maxItems: 10,
+        description: 'List of tag names (0-10 tags)'
     })),
-    // slug: t.String({ pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$', minLength: 3, maxLength: 150 }), // Removido
+    // published: t.Optional(t.Boolean({...})) // Removido
+    // verified: t.Optional(t.Boolean({...}))  // Removido
 });
 
 /**

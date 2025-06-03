@@ -1,14 +1,17 @@
-import { Elysia } from 'elysia';
+import { Elysia, t } from 'elysia';
 import { ArticleService } from '../services/articleService';
 import { auth, requireAuthor } from '../middlewares/auth';
-import { sanitizeModuleData, sanitizeSubArticleData } from '../utils/articleSanitizer';
-import { RouteContext, AuthenticatedContext } from '../types/routes';
-import { ModuleInputData, SubArticleInputData } from '../types/articleTypes';
 import { 
-    articleModuleSchema, 
-    subArticleSchema, 
-    moduleInputSchema, 
-    subArticleInputSchema,
+    sanitizeArticleData,
+    sanitizeTitle,
+    sanitizeDescription,
+    sanitizeContent
+} from '../utils/articleSanitizer';
+import { RouteContext, AuthenticatedContext } from '../types/routes';
+import { ArticleInputData, ArticleDbUpdate } from '../types/articleTypes';
+import { 
+    articleSchema, 
+    articleInputSchema, 
     errorSchema 
 } from '../schemas/articleSchemas';
 
@@ -58,8 +61,8 @@ const commonErrorResponses = {
 export const articleRoutes = new Elysia({ prefix: '/articles' })
     .get('/', async ({ set }) => {
         try {
-            const modules = await ArticleService.getAllModules();
-            return modules;
+            const articles = await ArticleService.getAllArticles();
+            return articles;
         } catch (error) {
             set.status = 500;
             return {
@@ -70,15 +73,15 @@ export const articleRoutes = new Elysia({ prefix: '/articles' })
     }, {
         detail: {
             tags: ['articles'],
-            description: 'Retrieve all article modules with their sub-articles',
+            description: 'Retrieve all published articles',
             responses: {
                 '200': {
-                    description: 'List of all article modules',
+                    description: 'List of all published articles',
                     content: {
                         'application/json': {
                             schema: {
                                 type: 'array',
-                                items: articleModuleSchema
+                                items: articleSchema
                             }
                         }
                     }
@@ -87,49 +90,14 @@ export const articleRoutes = new Elysia({ prefix: '/articles' })
             }
         }
     })
-    .get('/:moduleSlug', async ({ params, set }) => {
+    .get('/:slug', async ({ params, set }) => {
         try {
-            const module = await ArticleService.getModuleBySlug(params.moduleSlug);
-            if (!module) {
-                set.status = 404;
-                return {
-                    error: 'Not found',
-                    message: 'Article module not found'
-                };
-            }
-            return module;
-        } catch (error) {
-            set.status = 500;
-            return {
-                error: 'Failed to fetch article',
-                message: error instanceof Error ? error.message : 'Unknown error'
-            };
-        }
-    }, {
-        detail: {
-            tags: ['articles'],
-            description: 'Get article module by its slug',
-            responses: {
-                '200': {
-                    description: 'Article module details',
-                    content: {
-                        'application/json': {
-                            schema: articleModuleSchema
-                        }
-                    }
-                },
-                ...commonErrorResponses
-            }
-        }
-    })
-    .get('/:moduleSlug/:articleSlug', async ({ params, set }) => {
-        try {
-            const article = await ArticleService.getSubArticleBySlug(params.moduleSlug, params.articleSlug);
+            const article = await ArticleService.getArticleBySlug(params.slug);
             if (!article) {
                 set.status = 404;
                 return {
                     error: 'Not found',
-                    message: 'Sub-article not found'
+                    message: 'Article not found'
                 };
             }
             return article;
@@ -143,13 +111,13 @@ export const articleRoutes = new Elysia({ prefix: '/articles' })
     }, {
         detail: {
             tags: ['articles'],
-            description: 'Get sub-article by its slug and parent module slug',
+            description: 'Get a single article by its slug',
             responses: {
                 '200': {
-                    description: 'Sub-article details',
+                    description: 'Article details',
                     content: {
                         'application/json': {
-                            schema: subArticleSchema
+                            schema: articleSchema
                         }
                     }
                 },
@@ -157,36 +125,48 @@ export const articleRoutes = new Elysia({ prefix: '/articles' })
             }
         }
     })
-    .post('/', async ({ body, request, set }: RouteContext & { body: ModuleInputData }) => {
+    .post('/', async ({ body, request, set }: RouteContext & { body: ArticleInputData }) => {
         return requireAuthor(async ({ user, set }: AuthenticatedContext) => {
             try {
-                const sanitizedData = sanitizeModuleData(body);
-                const module = await ArticleService.createModule({
-                    ...sanitizedData,
-                    member_id: user.id
+                const coreSanitizedData = sanitizeArticleData(body);
+                const article = await ArticleService.createArticle({
+                    ...coreSanitizedData,
+                    member_id: user.id,
+                    tagNames: body.tagNames
                 });
                 set.status = 201;
-                return module;
+                return article;
             } catch (error) {
-                set.status = 400;
+                console.error("Error creating article:", error);
+                let statusCode = 500;
+                let errorTitle = 'Failed to create article';
+                if (error instanceof Error) {
+                    if (error.message.includes("slug already exists") || 
+                        error.message.includes("Title must be") || 
+                        error.message.includes("Content must be")) {
+                        statusCode = 400;
+                        errorTitle = 'Validation failed';
+                    }
+                }
+                set.status = statusCode;
                 return {
-                    error: 'Validation failed',
+                    error: errorTitle,
                     message: error instanceof Error ? error.message : 'Invalid input data'
                 };
             }
         })({ body, request, set });
     }, {
-        body: moduleInputSchema,
+        body: articleInputSchema,
         detail: {
             tags: ['articles'],
-            description: 'Create new article module (requires author permission)',
+            description: 'Create a new article (requires author permission)',
             security: [{ bearerAuth: [] }],
             responses: {
                 '201': {
-                    description: 'Article module created',
+                    description: 'Article created successfully',
                     content: {
                         'application/json': {
-                            schema: articleModuleSchema
+                            schema: articleSchema
                         }
                     }
                 },
@@ -194,172 +174,89 @@ export const articleRoutes = new Elysia({ prefix: '/articles' })
             }
         }
     })
-    .post('/:moduleSlug/articles', async ({ params, body, request, set }: RouteContext & { 
-        params: { moduleSlug: string }, 
-        body: SubArticleInputData 
+    .put('/:slug', async ({ params, body, request, set }: RouteContext & { 
+        params: { slug: string }, 
+        body: Partial<ArticleInputData>
     }) => {
         return requireAuthor(async ({ user, set }: AuthenticatedContext) => {
             try {
-                const module = await ArticleService.getModuleBySlug(params.moduleSlug);
-                if (!module) {
-                    set.status = 404;
-                    return {
-                        error: 'Not found',
-                        message: 'Article module not found'
-                    };
+                const finalUpdatePayload: Partial<ArticleDbUpdate> = {};
+
+                if (body.title !== undefined) {
+                    finalUpdatePayload.title = sanitizeTitle(body.title);
+                }
+                if (body.description !== undefined) {
+                    finalUpdatePayload.description = sanitizeDescription(body.description);
+                } else if (body.hasOwnProperty('description') && body.description === null) {
+                    finalUpdatePayload.description = null;
+                }
+                if (body.content !== undefined) {
+                    finalUpdatePayload.content = sanitizeContent(body.content);
+                }
+                
+                if (body.tagNames !== undefined) {
+                    finalUpdatePayload.tagNames = body.tagNames;
                 }
 
-                if (module.member_id !== user.id) {
-                    set.status = 403;
-                    return {
-                        error: 'Forbidden',
-                        message: 'You can only add articles to your own modules'
-                    };
-                }
+                const hasDataUpdates = finalUpdatePayload.title !== undefined || 
+                                     finalUpdatePayload.description !== undefined || 
+                                     (body.hasOwnProperty('description') && body.description === null) ||
+                                     finalUpdatePayload.content !== undefined;
 
-                const sanitizedData = sanitizeSubArticleData(body);
-                const subArticle = await ArticleService.createSubArticle({
-                    ...sanitizedData,
-                    module_id: module.id
-                });
-
-                set.status = 201;
-                return subArticle;
-            } catch (error) {
-                set.status = 400;
-                return {
-                    error: 'Validation failed',
-                    message: error instanceof Error ? error.message : 'Invalid input data'
-                };
-            }
-        })({ params, body, request, set });
-    }, {
-        body: subArticleInputSchema,
-        detail: {
-            tags: ['articles'],
-            description: 'Create new sub-article in a module (requires author permission)',
-            security: [{ bearerAuth: [] }],
-            responses: {
-                '201': {
-                    description: 'Sub-article created',
-                    content: {
-                        'application/json': {
-                            schema: subArticleSchema
-                        }
+                if (!hasDataUpdates && finalUpdatePayload.tagNames === undefined) {
+                    const currentArticle = await ArticleService.getArticleBySlug(params.slug);
+                    if (!currentArticle) {
+                        set.status = 404;
+                        return { error: 'Not found', message: 'Article not found for no-op update.' };
                     }
-                },
-                ...commonErrorResponses
-            }
-        }
-    })
-    .put('/:moduleSlug', async ({ params, body, request, set }: RouteContext & { 
-        params: { moduleSlug: string }, 
-        body: ModuleInputData 
-    }) => {
-        return requireAuthor(async ({ user, set }: AuthenticatedContext) => {
-            try {
-                const module = await ArticleService.getModuleBySlug(params.moduleSlug);
-                if (!module) {
-                    set.status = 404;
-                    return {
-                        error: 'Not found',
-                        message: 'Article module not found'
-                    };
-                }
-
-                if (module.member_id !== user.id) {
-                    set.status = 403;
-                    return {
-                        error: 'Forbidden',
-                        message: 'You can only update your own modules'
-                    };
-                }
-
-                const sanitizedData = sanitizeModuleData(body);
-                const updatedModule = await ArticleService.updateModule(module.id, sanitizedData);
-                return updatedModule;
-            } catch (error) {
-                set.status = 400;
-                return {
-                    error: 'Update failed',
-                    message: error instanceof Error ? error.message : 'Invalid input data'
-                };
-            }
-        })({ params, body, request, set });
-    }, {
-        body: moduleInputSchema,
-        detail: {
-            tags: ['articles'],
-            description: 'Update an existing article module (requires author permission)',
-            security: [{ bearerAuth: [] }],
-            responses: {
-                '200': {
-                    description: 'Module updated successfully',
-                    content: {
-                        'application/json': {
-                            schema: articleModuleSchema
-                        }
+                    if (currentArticle.member_id !== user.id) {
+                        set.status = 403;
+                        return { error: 'Forbidden', message: 'You do not have permission to view this article.' };
                     }
-                },
-                ...commonErrorResponses
-            }
-        }
-    })
-    .put('/:moduleSlug/:articleSlug', async ({ params, body, request, set }: RouteContext & { 
-        params: { moduleSlug: string; articleSlug: string }, 
-        body: SubArticleInputData 
-    }) => {
-        return requireAuthor(async ({ user, set }: AuthenticatedContext) => {
-            try {
-                const module = await ArticleService.getModuleBySlug(params.moduleSlug);
-                if (!module) {
-                    set.status = 404;
-                    return {
-                        error: 'Not found',
-                        message: 'Article module not found'
-                    };
+                    return currentArticle; 
                 }
 
-                if (module.member_id !== user.id) {
-                    set.status = 403;
-                    return {
-                        error: 'Forbidden',
-                        message: 'You can only update articles in your own modules'
-                    };
-                }
-
-                const article = await ArticleService.getSubArticleBySlug(params.moduleSlug, params.articleSlug);
-                if (!article) {
-                    set.status = 404;
-                    return {
-                        error: 'Not found',
-                        message: 'Sub-article not found'
-                    };
-                }
-
-                const sanitizedData = sanitizeSubArticleData(body);
-                const updatedArticle = await ArticleService.updateSubArticle(article.id, sanitizedData);
+                const updatedArticle = await ArticleService.updateArticle(params.slug, finalUpdatePayload, user.id);
                 return updatedArticle;
+
             } catch (error) {
-                set.status = 400;
+                console.error("Error updating article:", error);
+                let statusCode = 500;
+                let errorTitle = 'Internal server error during update';
+
+                if (error instanceof Error) {
+                    if (error.message.toLowerCase().includes('not found')) {
+                        statusCode = 404;
+                        errorTitle = 'Not found';
+                    } else if (error.message.toLowerCase().includes('forbidden')) {
+                        statusCode = 403;
+                        errorTitle = 'Forbidden';
+                    } else if (error.message.includes("Title must be") || error.message.includes("Content must be")) {
+                        statusCode = 400;
+                        errorTitle = 'Validation failed';
+                    } else {
+                        errorTitle = error.message; 
+                    }
+                }
+                set.status = statusCode;
                 return {
-                    error: 'Update failed',
-                    message: error instanceof Error ? error.message : 'Invalid input data'
+                    error: errorTitle,
+                    message: error instanceof Error ? error.message : 'Invalid input data or server error'
                 };
             }
         })({ params, body, request, set });
     }, {
-        body: subArticleInputSchema,
+        body: t.Partial(articleInputSchema),
         detail: {
             tags: ['articles'],
-            description: 'Update an existing sub-article (requires author permission)',
+            description: 'Update an existing article (requires author permission)',
             security: [{ bearerAuth: [] }],
             responses: {
                 '200': {
-                    description: 'Sub-article updated successfully',
+                    description: 'Article updated successfully',
                     content: {
                         'application/json': {
-                            schema: subArticleSchema
+                            schema: articleSchema
                         }
                     }
                 },
@@ -367,100 +264,42 @@ export const articleRoutes = new Elysia({ prefix: '/articles' })
             }
         }
     })
-    .delete('/:moduleSlug', async ({ params, request, set }: RouteContext & { params: { moduleSlug: string } }) => {
+    .delete('/:slug', async ({ params, request, set }: RouteContext & { params: { slug: string } }) => {
         return requireAuthor(async ({ user, set }: AuthenticatedContext) => {
             try {
-                const module = await ArticleService.getModuleBySlug(params.moduleSlug);
-                if (!module) {
-                    set.status = 404;
-                    return {
-                        error: 'Not found',
-                        message: 'Article module not found'
-                    };
-                }
-
-                if (module.member_id !== user.id) {
-                    set.status = 403;
-                    return {
-                        error: 'Forbidden',
-                        message: 'You can only delete your own modules'
-                    };
-                }
-
-                await ArticleService.deleteModule(module.id);
+                await ArticleService.deleteArticle(params.slug, user.id);
                 set.status = 204;
                 return null;
             } catch (error) {
-                set.status = 500;
+                console.error("Error deleting article:", error);
+                let statusCode = 500;
+                let errorMessage = 'Failed to delete article';
+                if (error instanceof Error) {
+                    if (error.message.toLowerCase().includes('not found')) {
+                        statusCode = 404;
+                        errorMessage = 'Article not found';
+                    } else if (error.message.toLowerCase().includes('forbidden')) {
+                        statusCode = 403;
+                        errorMessage = 'You do not have permission to delete this article';
+                    } else {
+                        errorMessage = error.message;
+                    }
+                }
+                set.status = statusCode;
                 return {
-                    error: 'Delete failed',
-                    message: error instanceof Error ? error.message : 'Failed to delete module'
+                    error: statusCode === 404 ? 'Not found' : (statusCode === 403 ? 'Forbidden' : 'Delete failed'),
+                    message: errorMessage
                 };
             }
         })({ params, request, set });
     }, {
         detail: {
             tags: ['articles'],
-            description: 'Delete an article module and all its sub-articles (requires author permission)',
+            description: 'Delete an article (requires author permission)',
             security: [{ bearerAuth: [] }],
             responses: {
                 '204': {
-                    description: 'Module deleted successfully'
-                },
-                ...commonErrorResponses
-            }
-        }
-    })
-    .delete('/:moduleSlug/:articleSlug', async ({ params, request, set }: RouteContext & { 
-        params: { moduleSlug: string; articleSlug: string } 
-    }) => {
-        return requireAuthor(async ({ user, set }: AuthenticatedContext) => {
-            try {
-                const module = await ArticleService.getModuleBySlug(params.moduleSlug);
-                if (!module) {
-                    set.status = 404;
-                    return {
-                        error: 'Not found',
-                        message: 'Article module not found'
-                    };
-                }
-
-                if (module.member_id !== user.id) {
-                    set.status = 403;
-                    return {
-                        error: 'Forbidden',
-                        message: 'You can only delete articles from your own modules'
-                    };
-                }
-
-                const article = await ArticleService.getSubArticleBySlug(params.moduleSlug, params.articleSlug);
-                if (!article) {
-                    set.status = 404;
-                    return {
-                        error: 'Not found',
-                        message: 'Sub-article not found'
-                    };
-                }
-
-                await ArticleService.deleteSubArticle(article.id);
-                set.status = 204;
-                return null;
-            } catch (error) {
-                set.status = 500;
-                return {
-                    error: 'Delete failed',
-                    message: error instanceof Error ? error.message : 'Failed to delete sub-article'
-                };
-            }
-        })({ params, request, set });
-    }, {
-        detail: {
-            tags: ['articles'],
-            description: 'Delete a sub-article (requires author permission)',
-            security: [{ bearerAuth: [] }],
-            responses: {
-                '204': {
-                    description: 'Sub-article deleted successfully'
+                    description: 'Article deleted successfully'
                 },
                 ...commonErrorResponses
             }
