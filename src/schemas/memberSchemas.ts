@@ -25,6 +25,10 @@ export const memberSchema = t.Object({
     avatar_url: t.Optional(t.String({
         description: 'Member avatar URL'
     })),
+    is_subscriber: t.Boolean({
+        description: 'Indicates if the member is a subscriber',
+        default: false
+    }),
     created_at: t.String({
         description: 'Creation timestamp'
     }),
@@ -50,6 +54,9 @@ export const memberInputSchema = t.Object({
     }),
     avatar: t.Optional(t.Any({
         description: 'Member avatar file'
+    })),
+    is_subscriber: t.Optional(t.Boolean({
+        description: 'Indicates if the member is a subscriber'
     }))
 });
 
@@ -71,6 +78,9 @@ export const memberUpdateSchema = t.Object({
     })),
     avatar: t.Optional(t.Any({
         description: 'Member avatar file'
+    })),
+    is_subscriber: t.Optional(t.Boolean({
+        description: 'Indicates if the member is a subscriber'
     }))
 });
 

@@ -2,7 +2,7 @@ import { Elysia, t } from 'elysia';
 import { auth, requireAuthor } from '../middlewares/auth';
 import { PortfolioService } from '../services/portfolioService';
 import { portfolioInputSchema, portfolioUpdateSchema } from '../schemas/portfolioSchemas';
-import { AuthenticatedContext, RouteContext } from '../types/routes';
+import { ElysiaBaseContext, AuthenticatedContext } from '../types/routes';
 import { PortfolioInputData, PortfolioUpdateData, PortfolioDbInput } from '../types/portfolioTypes';
 
 const portfolioResponseSchema = t.Object({
@@ -23,7 +23,8 @@ const simpleErrorSchema = t.Object({
 
 export const portfolioRoutes = new Elysia({ prefix: '/portfolio' })
     // GET /api/portfolio - Listar todos os projetos
-    .get('/', async ({ set }) => {
+    .get('/', async (context: ElysiaBaseContext) => {
+        const { set } = context;
         try {
             const projects = await PortfolioService.getAll();
             return projects;
@@ -48,7 +49,8 @@ export const portfolioRoutes = new Elysia({ prefix: '/portfolio' })
         }
     })
     // GET /api/portfolio/:slug - Obter projeto por slug
-    .get('/:slug', async ({ params, set }) => {
+    .get('/:slug', async (context: ElysiaBaseContext & { params: { slug: string } }) => {
+        const { params, set } = context;
         try {
             const project = await PortfolioService.getBySlug(params.slug);
             if (!project) {
@@ -82,8 +84,9 @@ export const portfolioRoutes = new Elysia({ prefix: '/portfolio' })
         }
     })
     // POST /api/portfolio - Criar novo projeto (autenticado, author+)
-    .post('/', async ({ body, request, set }: RouteContext & { body: PortfolioInputData }) => {
-        return requireAuthor(async ({ user, set }: AuthenticatedContext) => {
+    .post('/', async (context: ElysiaBaseContext & { body: PortfolioInputData }) => {
+        const { body, request, set } = context;
+        return requireAuthor(async ({ user, set: authSet }: AuthenticatedContext) => {
             try {
                 const dbInput: PortfolioDbInput = {
                     member_id: user.id,
@@ -93,16 +96,16 @@ export const portfolioRoutes = new Elysia({ prefix: '/portfolio' })
                     slug: '' // Placeholder
                 };
                 const project = await PortfolioService.create(dbInput as any);
-                set.status = 201;
+                authSet.status = 201;
                 return project;
             } catch (error) {
                 const errorMessage = 'Failed to create portfolio project';
                 const errorDetails = error instanceof Error ? error.message : 'Unknown error';
-                set.status = error instanceof Error && error.message.includes('duplicate slug') ? 409 :
+                authSet.status = error instanceof Error && error.message.includes('duplicate slug') ? 409 :
                              error instanceof Error && error.message.includes('Failed to generate unique slug') ? 500 : 400;
                 return { error: errorMessage, details: errorDetails };
             }
-        })({ body, request, set });
+        })(context as any);
     }, {
         body: portfolioInputSchema,
         detail: {
@@ -138,16 +141,17 @@ export const portfolioRoutes = new Elysia({ prefix: '/portfolio' })
         }
     })
     // PUT /api/portfolio/:slug - Atualizar projeto (autenticado, author+, owner)
-    .put('/:slug', async ({ params, body, request, set }: RouteContext & { params: { slug: string }, body: PortfolioUpdateData }) => {
-        return requireAuthor(async ({ user, set }: AuthenticatedContext) => {
+    .put('/:slug', async (context: ElysiaBaseContext & { params: { slug: string }, body: PortfolioUpdateData }) => {
+        const { params, body, request, set } = context;
+        return requireAuthor(async ({ user, set: authSet }: AuthenticatedContext) => {
             try {
                 const existingProject = await PortfolioService.getBySlug(params.slug);
                 if (!existingProject) {
-                    set.status = 404;
+                    authSet.status = 404;
                     return { error: 'Portfolio project not found' };
                 }
                 if (existingProject.member_id !== user.id) {
-                    set.status = 403;
+                    authSet.status = 403;
                     return { error: 'Forbidden: You do not own this project.' };
                 }
                 const project = await PortfolioService.update(existingProject.id, user.id, body);
@@ -155,11 +159,11 @@ export const portfolioRoutes = new Elysia({ prefix: '/portfolio' })
             } catch (error) {
                 const errorMessage = 'Failed to update portfolio project';
                 const errorDetails = error instanceof Error ? error.message : 'Unknown error';
-                set.status = error instanceof Error && error.message.startsWith('Project not found or user not authorized') ? 404 :
+                authSet.status = error instanceof Error && error.message.startsWith('Project not found or user not authorized') ? 404 :
                              error instanceof Error && error.message.startsWith('Attempted to update slug') ? 400 : 400;
                 return { error: errorMessage, details: errorDetails };
             }
-        })({ request, params, body, set });
+        })(context as any);
     }, {
         params: t.Object({ slug: t.String() }),
         body: portfolioUpdateSchema,
@@ -192,27 +196,43 @@ export const portfolioRoutes = new Elysia({ prefix: '/portfolio' })
         }
     })
     // DELETE /api/portfolio/:slug - Deletar projeto (autenticado, author+, owner)
-    .delete('/:slug', async ({ params, request, set }: RouteContext & { params: { slug: string }}) => {
-        return requireAuthor(async ({ user, set }: AuthenticatedContext) => {
+    .delete('/:slug', async (context: ElysiaBaseContext & { params: { slug: string }}) => {
+        const { params, request, set } = context;
+        return requireAuthor(async ({ user, set: authSet }: AuthenticatedContext) => {
             try {
                 const existingProject = await PortfolioService.getBySlug(params.slug);
                 if (!existingProject) {
-                    set.status = 404;
+                    authSet.status = 404;
                     return { error: 'Portfolio project not found' };
                 }
                 if (existingProject.member_id !== user.id) {
-                    set.status = 403;
+                    authSet.status = 403;
                     return { error: 'Forbidden: You do not own this project.' };
                 }
-                const result = await PortfolioService.delete(existingProject.id, user.id);
-                return result;
+                
+                // Assuming PortfolioService.delete will throw an error if deletion fails for some reason
+                // (e.g., database constraint), or if project not found (though checked above).
+                // If it completes without error, the deletion is successful.
+                await PortfolioService.delete(existingProject.id, user.id);
+                
+                authSet.status = 204; // No Content for successful deletion
+                return; // Return nothing for 204
+
             } catch (error) {
                 const errorMessage = 'Failed to delete portfolio project';
                 const errorDetails = error instanceof Error ? error.message : 'Unknown error';
-                set.status = error instanceof Error && error.message.startsWith('Project not found or user not authorized') ? 404 : 500;
+                
+                // More specific error handling can be added if PortfolioService.delete throws typed errors
+                if (error instanceof Error && error.message.toLowerCase().includes('not found')) {
+                    authSet.status = 404;
+                } else if (error instanceof Error && error.message.toLowerCase().includes('forbidden')) {
+                    authSet.status = 403;
+                } else {
+                    authSet.status = 500;
+                }
                 return { error: errorMessage, details: errorDetails };
             }
-        })({ request, params, set });
+        })(context as any); // Pass outer context to requireAuthor HOF
     }, {
         params: t.Object({ slug: t.String() }),
         detail: {
@@ -220,26 +240,11 @@ export const portfolioRoutes = new Elysia({ prefix: '/portfolio' })
             description: 'Deletes an existing portfolio project. Requires authentication, author permissions, and ownership of the project.',
             security: [{ bearerAuth: [] }],
             responses: {
-                '200': {
-                    description: 'Portfolio project deleted successfully',
-                    content: { 'application/json': { schema: t.Object({ message: t.String() }) } } 
-                },
-                '401': {
-                    description: 'Unauthorized',
-                    content: { 'application/json': { schema: simpleErrorSchema } }
-                },
-                '403': {
-                    description: 'Forbidden - Insufficient permissions or not project owner',
-                    content: { 'application/json': { schema: simpleErrorSchema } }
-                },
-                '404': {
-                    description: 'Project not found',
-                    content: { 'application/json': { schema: simpleErrorSchema } }
-                },
-                '500': {
-                    description: 'Internal server error',
-                    content: { 'application/json': { schema: simpleErrorSchema } }
-                }
+                '204': { description: 'Portfolio project deleted successfully' },
+                '401': { description: 'Unauthorized', content: { 'application/json': { schema: simpleErrorSchema } } },
+                '403': { description: 'Forbidden - Insufficient permissions or not project owner', content: { 'application/json': { schema: simpleErrorSchema } } },
+                '404': { description: 'Project not found', content: { 'application/json': { schema: simpleErrorSchema } } },
+                '500': { description: 'Internal server error', content: { 'application/json': { schema: simpleErrorSchema } } }
             }
         }
     }); 

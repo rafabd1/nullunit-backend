@@ -88,10 +88,10 @@ export class CourseService {
         return tagIds;
     }
     
-    private static async getCourseBySlugInternal(slug: string): Promise<Pick<Course, 'id' | 'slug' | 'member_id'> | null> {
+    private static async getCourseBySlugInternal(slug: string): Promise<Pick<Course, 'id' | 'slug' | 'member_id' | 'published'> | null> {
         const { data, error } = await supabase
             .from(TABLE_COURSES)
-            .select('id, slug, member_id')
+            .select('id, slug, member_id, published')
             .eq('slug', slug)
             .maybeSingle();
         if (error) {
@@ -119,12 +119,26 @@ export class CourseService {
         return { ownerId: data.member_id, courseId: data.id };
     }
 
-    static async getAllCourses(): Promise<Course[]> {
-        const { data, error } = await supabase
+    static async getAllCourses(requestingMemberId?: string): Promise<Course[]> {
+        const query = supabase
             .from(TABLE_COURSES)
             .select(this.COURSE_FIELDS_SELECT)
-            .eq('published', true) // Por padrão, lista apenas cursos publicados
             .order('created_at', { ascending: false });
+
+        // If no specific member is requesting, or if they are not an admin/owner (future check),
+        // only show published courses.
+        // For now, simple published check. This logic will be expanded by middleware for subscribers.
+        if (!requestingMemberId) { // Simplified: only show published if no user context
+            query.eq('published', true);
+        } else {
+            // If a user is requesting, allow them to see their own unpublished courses
+            // query.or(`published.eq.true,and(published.eq.false,member_id.eq.${requestingMemberId})`);
+            // This logic is complex for a simple service call and will be handled by route-level logic or middleware
+            // For now, to allow owners to see their drafts via direct API calls if needed for an admin panel for example:
+            query.or(`published.eq.true,member_id.eq.${requestingMemberId}`);
+        }
+
+        const { data, error } = await query;
 
         if (error) throw new DatabaseError(`Failed to fetch courses: ${error.message}`);
         if (!data) return [];
@@ -133,10 +147,13 @@ export class CourseService {
             ...course,
             tags: await this._getCourseTags(course.id)
         })));
-        return coursesWithTags;
+        
+        // Further filter for non-owners if they somehow got unpublished courses
+        // This is a safeguard, primary filtering should be in the query or middleware
+        return coursesWithTags.filter(course => course.published || course.member_id === requestingMemberId);
     }
     
-    static async getCourseBySlug(slug: string): Promise<Course | null> {
+    static async getCourseBySlug(slug: string, requestingMemberId?: string): Promise<Course | null> {
         const { data, error } = await supabase
             .from(TABLE_COURSES)
             .select(this.COURSE_FIELDS_SELECT)
@@ -145,6 +162,11 @@ export class CourseService {
 
         if (error) throw new DatabaseError(`Failed to fetch course by slug: ${error.message}`);
         if (!data) return null;
+
+        // Check if the course is published or if the requester is the owner
+        if (!data.published && data.member_id !== requestingMemberId) {
+            return null; // Not published and not the owner, so treat as not found/accessible
+        }
 
         return {
             ...data,
@@ -217,7 +239,8 @@ export class CourseService {
         const hasMeaningfulUpdate = Object.keys(courseUpdates).length > 0;
 
         if (!hasMeaningfulUpdate && (tagNames === undefined || tagNames === null)) {
-             const currentCourseData = await this.getCourseBySlug(courseSlug);
+             // Pass requestingMemberId to ensure we can fetch the course even if it's a draft
+             const currentCourseData = await this.getCourseBySlug(courseSlug, requestingMemberId);
              if (!currentCourseData) throw new NotFoundError('Course not found after no-op update check.');
              return currentCourseData;
         }

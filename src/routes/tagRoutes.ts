@@ -11,7 +11,7 @@ import {
     deleteSuccessSchema
 } from '../schemas/tagSchemas';
 import { TagInputData, TagUpdateData } from '../types/tagTypes';
-import { AuthenticatedContext, RouteContext } from '../types/routes';
+import { ElysiaBaseContext, AuthenticatedContext } from '../types/routes';
 
 const commonErrorResponses = {
     '400': { description: 'Bad Request', content: { 'application/json': { schema: errorSchema } } },
@@ -24,24 +24,25 @@ const commonErrorResponses = {
 
 export const tagRoutes = new Elysia({ prefix: '/tags' })
     // CRUD for Tags
-    .post('/', async ({ body, set }: RouteContext & { body: TagInputData }) => {
-        return requireAuthor(async ({ user, set }: AuthenticatedContext) => {
+    .post('/', async (context: ElysiaBaseContext & { body: TagInputData }) => {
+        const { body, set, request } = context;
+        return requireAuthor(async ({ user, set: authSet }: AuthenticatedContext) => {
             try {
                 const newTag = await TagService.createTag(body);
-                set.status = 201;
+                authSet.status = 201;
                 return newTag;
             } catch (error: any) {
                 if (error.message.includes('already exists')) {
-                    set.status = 409; // Conflict
+                    authSet.status = 409;
                     return { error: 'Conflict', message: error.message };
                 } else if (error.message.toLowerCase().includes('failed to create')) {
-                    set.status = 500;
+                    authSet.status = 500;
                     return { error: 'Database Error', message: error.message };
                 }
-                set.status = 400;
+                authSet.status = 400;
                 return { error: 'Bad Request', message: error.message };
             }
-        })({ body, set } as any); // Passar o contexto corretamente
+        })(context as any);
     }, {
         body: tagInputSchema,
         detail: {
@@ -54,7 +55,8 @@ export const tagRoutes = new Elysia({ prefix: '/tags' })
             }
         }
     })
-    .get('/', async ({set}) => {
+    .get('/', async (context: ElysiaBaseContext) => {
+        const { set } = context;
         try {
             const tags = await TagService.getAllTags();
             return tags;
@@ -72,7 +74,8 @@ export const tagRoutes = new Elysia({ prefix: '/tags' })
             }
         }
     })
-    .get('/:id', async ({ params, set }) => {
+    .get('/:id', async (context: ElysiaBaseContext & { params: { id: string } }) => {
+        const { params, set } = context;
         try {
             const tag = await TagService.getTagById(params.id);
             if (!tag) {
@@ -96,31 +99,32 @@ export const tagRoutes = new Elysia({ prefix: '/tags' })
             }
         }
     })
-    .put('/:id', async ({ params, body, set }: RouteContext & { params: { id: string }, body: TagUpdateData }) => {
-        return requireAuthor(async ({ user, set }: AuthenticatedContext) => {
+    .put('/:id', async (context: ElysiaBaseContext & { params: { id: string }, body: TagUpdateData }) => {
+        const { params, body, set, request } = context;
+        return requireAuthor(async ({ user, set: authSet }: AuthenticatedContext) => {
             if (Object.keys(body).length === 0 || !body.name?.trim()) {
-                set.status = 400;
+                authSet.status = 400;
                 return { error: 'Bad Request', message: 'Name is required for updating a tag.' };
             }
             try {
                 const updatedTag = await TagService.updateTag(params.id, body);
                 if (!updatedTag) {
-                    set.status = 404;
+                    authSet.status = 404;
                     return { error: 'Not Found', message: 'Tag not found or no changes made' };
                 }
                 return updatedTag;
             } catch (error: any) {
                 if (error.message.includes('already exists')) {
-                    set.status = 409; // Conflict
+                    authSet.status = 409;
                     return { error: 'Conflict', message: error.message };
                 } else if (error.message.toLowerCase().includes('failed to update')) {
-                    set.status = 500;
+                    authSet.status = 500;
                     return { error: 'Database Error', message: error.message };
                 }
-                set.status = 400;
+                authSet.status = 400;
                 return { error: 'Bad Request', message: error.message };
             }
-        })({ params, body, set } as any);
+        })(context as any);
     }, {
         params: paramIdSchema,
         body: tagUpdateSchema,
@@ -134,20 +138,21 @@ export const tagRoutes = new Elysia({ prefix: '/tags' })
             }
         }
     })
-    .delete('/:id', async ({ params, set }) => {
-        return requireAuthor(async ({ user, set }: AuthenticatedContext) => {
+    .delete('/:id', async (context: ElysiaBaseContext & { params: { id: string } }) => {
+        const { params, set, request } = context;
+        return requireAuthor(async ({ user, set: authSet }: AuthenticatedContext) => {
             try {
                 const result = await TagService.deleteTag(params.id);
                 if (result.count === 0) {
-                    set.status = 404;
+                    authSet.status = 404;
                     return { error: 'Not Found', message: 'Tag not found or already deleted' };
                 }
                 return { message: 'Tag and its associations deleted successfully' };
             } catch (error: any) {
-                 set.status = 500;
+                 authSet.status = 500;
                  return { error: 'Internal Server Error', message: error.message };
             }
-        })({ params, set } as any);
+        })(context as any);
     }, {
         params: paramIdSchema,
         detail: {
@@ -161,7 +166,8 @@ export const tagRoutes = new Elysia({ prefix: '/tags' })
         }
     })
     // Routes to get tags by associated content ID
-    .get('/module/:moduleId', async ({ params, set }) => {
+    .get('/module/:moduleId', async (context: ElysiaBaseContext & { params: { moduleId: string } }) => {
+        const { params, set } = context;
         try {
             const tags = await TagService.getTagsByModuleId(params.moduleId);
             return tags;
@@ -181,7 +187,8 @@ export const tagRoutes = new Elysia({ prefix: '/tags' })
             }
         }
     })
-    .get('/sub-article/:subArticleId', async ({ params, set }) => {
+    .get('/sub-article/:subArticleId', async (context: ElysiaBaseContext & { params: { subArticleId: string } }) => {
+        const { params, set } = context;
         try {
             const tags = await TagService.getTagsBySubArticleId(params.subArticleId);
             return tags;
@@ -201,7 +208,8 @@ export const tagRoutes = new Elysia({ prefix: '/tags' })
             }
         }
     })
-    .get('/project/:projectId', async ({ params, set }) => {
+    .get('/project/:projectId', async (context: ElysiaBaseContext & { params: { projectId: string } }) => {
+        const { params, set } = context;
         try {
             const tags = await TagService.getTagsByProjectId(params.projectId);
             return tags;

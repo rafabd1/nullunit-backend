@@ -102,12 +102,24 @@ export class ArticleService {
      * @description Get all published articles with their tags.
      * TODO: Add pagination, filtering by tags, etc. in the future.
      */
-    static async getAllArticles(): Promise<Article[]> {
-        const { data, error } = await supabase
+    static async getAllArticles(requestingMemberId?: string): Promise<Article[]> {
+        let query = supabase
             .from(TABLE_ARTICLES)
             .select(this.ARTICLE_FIELDS_SELECT)
-            .eq('published', true)
             .order('created_at', { ascending: false });
+
+        if (requestingMemberId) {
+            // If a member is requesting, show their own articles (published or not) OR any published articles.
+            // This OR condition might be complex for Supabase direct query. 
+            // A simpler approach: fetch all by member, then fetch all published, then merge and deduplicate.
+            // Or, adjust query to be `(published = true OR member_id = requestingMemberId)`
+            query = query.or(`published.eq.true,member_id.eq.${requestingMemberId}`);
+        } else {
+            // No member requesting, only show published articles
+            query = query.eq('published', true);
+        }
+
+        const { data, error } = await query;
 
         if (error) throw new DatabaseError(`Failed to fetch articles: ${error.message}`);
         if (!data) return [];
@@ -122,9 +134,9 @@ export class ArticleService {
 
     /**
      * @description Get a specific article by its slug, including tags.
-     * It fetches the article regardless of its published status for direct access.
+     * It fetches the article only if it's published, or if the requesting member is the author.
      */
-    static async getArticleBySlug(slug: string): Promise<Article | null> {
+    static async getArticleBySlug(slug: string, requestingMemberId?: string): Promise<Article | null> {
         const { data, error } = await supabase
             .from(TABLE_ARTICLES)
             .select(this.ARTICLE_FIELDS_SELECT)
@@ -138,16 +150,20 @@ export class ArticleService {
             return null;
         }
 
+        if (!data.published && data.member_id !== requestingMemberId) {
+            return null;
+        }
+
         return {
             ...data,
             tags: await this._getArticleTags(data.id)
         };
     }
     
-    private static async getArticleBySlugInternal(slug: string): Promise<Pick<Article, 'id' | 'slug' | 'member_id'> | null> {
+    private static async getArticleBySlugInternal(slug: string): Promise<Pick<Article, 'id' | 'slug' | 'member_id' | 'published'> | null> {
         const { data, error } = await supabase
             .from(TABLE_ARTICLES)
-            .select('id, slug, member_id')
+            .select('id, slug, member_id, published')
             .eq('slug', slug)
             .maybeSingle();
         if (error) {
@@ -223,7 +239,7 @@ export class ArticleService {
         const hasMeaningfulUpdate = Object.keys(articleUpdates).length > 0;
 
         if (!hasMeaningfulUpdate && (tagNames === undefined)) {
-            const currentArticleData = await this.getArticleBySlug(articleSlug);
+            const currentArticleData = await this.getArticleBySlug(articleSlug, requestingMemberId);
             if (!currentArticleData) throw new NotFoundError('Article not found after no-op update check.');
             return currentArticleData;
         }

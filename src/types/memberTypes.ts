@@ -7,6 +7,7 @@ export interface Member {
     permission: UserPermission;
     bio?: string;
     avatar_url?: string;
+    is_subscriber: boolean;
     created_at: string;
     updated_at: string;
 }
@@ -16,12 +17,14 @@ export interface MemberInputData {
     role?: string;
     bio?: string;
     avatar?: File | Buffer;
+    is_subscriber?: boolean;
 }
 
 export interface MemberUpdateData {
     role?: string;
     bio?: string;
     avatar?: File | Buffer;
+    is_subscriber?: boolean;
 }
 
 export interface MemberProfileUpdate {
@@ -46,6 +49,7 @@ export interface MemberResponse {
     permission: UserPermission;
     bio: string;
     avatar_url?: string;
+    is_subscriber: boolean;
     created_at: string;
     updated_at: string;
 }
@@ -53,4 +57,10 @@ export interface MemberResponse {
 export interface MemberWithPermission {
     id: string;
     permission: UserPermission;
+}
+
+export interface MemberWithPermissionAndSubscription {
+    id: string;
+    permission: UserPermission;
+    is_subscriber: boolean;
 }

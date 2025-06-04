@@ -2,7 +2,7 @@ import { Elysia } from 'elysia';
 import { MemberService } from '../services/memberService';
 import { auth, requireAdmin } from '../middlewares/auth';
 import { sanitizeMemberData } from '../utils/sanitizer';
-import { RouteContext, AuthenticatedContext } from '../types/routes';
+import { ElysiaBaseContext, AuthenticatedContext } from '../types/routes';
 import { 
     memberSchema, 
     memberInputSchema, 
@@ -19,10 +19,12 @@ import {
 import { UserPermission } from '../types/permissions';
 
 export const memberRoutes = new Elysia({ prefix: '/members' })
-    .get('/', async () => {
+    .get('/', async (context: ElysiaBaseContext) => {
+        const { set } = context;
         try {
             return await MemberService.getAll();
         } catch (error) {
+            set.status = 500;
             return {
                 error: 'Failed to fetch members',
                 message: error instanceof Error ? error.message : 'Unknown error'
@@ -55,7 +57,8 @@ export const memberRoutes = new Elysia({ prefix: '/members' })
             }
         }
     })
-    .get('/:username', async ({ params, set }: RouteContext & { params: { username: string } }) => {
+    .get('/:username', async (context: ElysiaBaseContext & { params: { username: string } }) => {
+        const { params, set } = context;
         try {
             const member = await MemberService.getByUsername(params.username);
             if (!member) {
@@ -105,8 +108,9 @@ export const memberRoutes = new Elysia({ prefix: '/members' })
             }
         }
     })
-    .post('/', async ({ body, request, set }: RouteContext & { body: MemberInputData }) => {
-        return auth(async ({ user, set }: AuthenticatedContext) => {
+    .post('/', async (context: ElysiaBaseContext & { body: MemberInputData }) => {
+        const { body, request, set } = context;
+        return auth(async ({ user, set: authSet }: AuthenticatedContext) => {
             try {
                 const sanitizedData = sanitizeMemberData({
                     username: body.username,
@@ -134,16 +138,16 @@ export const memberRoutes = new Elysia({ prefix: '/members' })
                 };
                 
                 const member = await MemberService.create(memberInput);
-                set.status = 201;
+                authSet.status = 201;
                 return member;
             } catch (error) {
-                set.status = error instanceof Error && error.message.includes('duplicate') ? 409 : 400;
+                authSet.status = error instanceof Error && error.message.includes('duplicate') ? 409 : 400;
                 return {
                     error: 'Validation failed',
                     message: error instanceof Error ? error.message : 'Invalid input data'
                 };
             }
-        })({ body, request, set });
+        })(context as any);
     }, {
         body: memberInputSchema,
         detail: {
@@ -178,8 +182,9 @@ export const memberRoutes = new Elysia({ prefix: '/members' })
             }
         }
     })
-    .patch('/me', async ({ body, request, set }: RouteContext & { body: MemberUpdateData & { newUsername?: string } }) => {
-        return auth(async ({ user, set }: AuthenticatedContext) => {
+    .patch('/me', async (context: ElysiaBaseContext & { body: MemberUpdateData & { newUsername?: string } }) => {
+        const { body, request, set } = context;
+        return auth(async ({ user, set: authSet }: AuthenticatedContext) => {
             try {
                 const userId = user.id;
 
@@ -210,7 +215,7 @@ export const memberRoutes = new Elysia({ prefix: '/members' })
                 };
 
                 if (Object.keys(updates).length === 0) {
-                    set.status = 400;
+                    authSet.status = 400;
                     return { 
                         error: 'No changes', 
                         message: 'No update data provided'
@@ -221,16 +226,16 @@ export const memberRoutes = new Elysia({ prefix: '/members' })
                 return updatedMember;
             } catch (error) {
                 if (error instanceof Error && error.message.includes('Username already taken')) {
-                    set.status = 409;
+                    authSet.status = 409;
                     return { error: 'Conflict', message: error.message };
                 }
-                set.status = 400;
+                authSet.status = 400;
                 return {
                     error: 'Update failed',
                     message: error instanceof Error ? error.message : 'Invalid update data'
                 };
             }
-        })({ body, request, set });
+        })(context as any);
     }, {
         body: memberUpdateSchema,
         detail: {
@@ -281,31 +286,32 @@ export const memberRoutes = new Elysia({ prefix: '/members' })
             }
         }
     })
-    .patch('/:username/permission', async ({ params, body, request, set }: RouteContext & { 
+    .patch('/:username/permission', async (context: ElysiaBaseContext & { 
         params: { username: string }, 
         body: { permission: UserPermission } 
     }) => {
-        return requireAdmin(async ({ set }: AuthenticatedContext) => {
+        const { params, body, request, set } = context;
+        return requireAdmin(async ({ user: adminUser, set: authSet }: AuthenticatedContext) => {
             try {
-                const member = await MemberService.getByUsername(params.username);
-                if (!member) {
-                    set.status = 404;
+                const memberToUpdate = await MemberService.getByUsername(params.username);
+                if (!memberToUpdate) {
+                    authSet.status = 404;
                     return {
                         error: 'Not found',
                         message: 'Member not found'
                     };
                 }
 
-                const updatedMember = await MemberService.updatePermission(member.id, body.permission);
+                const updatedMember = await MemberService.updatePermission(memberToUpdate.id, body.permission);
                 return updatedMember;
             } catch (error) {
-                set.status = 400;
+                authSet.status = 400;
                 return {
                     error: 'Update failed',
                     message: error instanceof Error ? error.message : 'Invalid permission'
                 };
             }
-        })({ params, body, request, set });
+        })(context as any);
     }, {
         body: permissionUpdateSchema,
         detail: {
