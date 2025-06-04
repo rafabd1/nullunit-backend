@@ -376,7 +376,7 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
         async (context: OptionallyAuthenticatedContext) => {
             const { set, member } = context;
             try {
-                const courses = await CourseService.getAllCourses(member?.id);
+                const courses = await CourseService.getAllCourses(member);
                 return courses;
             } catch (error: any) {
                 console.error("Error fetching all courses:", error);
@@ -406,7 +406,7 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
         async (context: OptionallyAuthenticatedContext & { params: { courseSlug: string } }) => {
             const { params, set, member } = context;
             try {
-                const course = await CourseService.getCourseBySlug(params.courseSlug, member?.id);
+                const course = await CourseService.getCourseBySlug(params.courseSlug, member);
                 if (!course) {
                     set.status = 404;
                     return { error: 'Not Found', message: 'Course not found or not accessible.' };
@@ -434,33 +434,70 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
             }
         }
     )
-    .get('/:courseSlug/modules', 
+    .get('/:courseSlug/modules',
         async (context: OptionallyAuthenticatedContext & { params: { courseSlug: string } }) => {
             const { params, set, member } = context;
             try {
-                const course = await CourseService.getCourseBySlug(params.courseSlug, member?.id);
-                if (!course) {
-                    set.status = 404;
-                    return { error: 'Not Found', message: `Course with slug '${params.courseSlug}' not found or not accessible.` };
-                }
                 const modules = await CourseModuleService.getAllModulesForCourse(params.courseSlug);
+                if (!modules) {
+                    set.status = 404;
+                    return { error: 'Not Found', message: 'Modules not found for this course or course does not exist.' };
+                }
                 return modules;
             } catch (error: any) {
                 console.error(`Error fetching modules for course ${params.courseSlug}:`, error);
-                set.status = error instanceof NotFoundError ? 404 : 500;
-                return { error: error.name || 'Error', message: error.message || 'Failed to fetch modules.' };
+                if (error instanceof NotFoundError) {
+                    set.status = 404; return { error: 'Not Found', message: error.message };
+                }
+                set.status = 500;
+                return { error: 'Internal Server Error', message: error.message || 'Failed to fetch modules.' };
             }
         },
         {
-            beforeHandle: [optionalAuth() as any],
+            beforeHandle: [optionalAuth() as any, checkPaidCourseAccess() as any], 
             params: t.Object({ courseSlug: t.String() }),
             detail: {
                 tags: ['Course Modules'],
-                description: 'Get all modules for an accessible course',
+                description: 'Get all modules for a specific course. Access controlled for paid courses.',
                 responses: {
                     '200': {
-                        description: 'List of modules',
+                        description: 'List of course modules',
                         content: { 'application/json': { schema: t.Array(courseModuleSchema) } }
+                    },
+                    ...commonErrorResponses
+                }
+            }
+        }
+    )
+    .get('/:courseSlug/modules/:moduleSlug',
+        async (context: OptionallyAuthenticatedContext & { params: { courseSlug: string, moduleSlug: string } }) => {
+            const { params, set, member } = context;
+            try {
+                const courseModule = await CourseModuleService.getModuleBySlugs(params.courseSlug, params.moduleSlug, member);
+                if (!courseModule) {
+                    set.status = 404;
+                    return { error: 'Not Found', message: 'Course module not found or course does not exist.' };
+                }
+                return courseModule;
+            } catch (error: any) {
+                console.error(`Error fetching module ${params.moduleSlug} for course ${params.courseSlug}:`, error);
+                 if (error instanceof NotFoundError) {
+                    set.status = 404; return { error: 'Not Found', message: error.message };
+                }
+                set.status = 500;
+                return { error: 'Internal Server Error', message: error.message || 'Failed to fetch course module.' };
+            }
+        },
+        {
+            beforeHandle: [optionalAuth() as any, checkPaidCourseAccess() as any], 
+            params: t.Object({ courseSlug: t.String(), moduleSlug: t.String() }),
+            detail: {
+                tags: ['Course Modules'],
+                description: 'Get a specific module by its slug and course slug. Access controlled for paid courses.',
+                responses: {
+                    '200': {
+                        description: 'Course module details',
+                        content: { 'application/json': { schema: courseModuleSchema } }
                     },
                     ...commonErrorResponses
                 }
@@ -471,7 +508,7 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
         async (context: OptionallyAuthenticatedContext & { params: { courseSlug: string, moduleId: string } }) => {
             const { params, set, member } = context;
             try {
-                const course = await CourseService.getCourseBySlug(params.courseSlug, member?.id);
+                const course = await CourseService.getCourseBySlug(params.courseSlug, member);
                 if (!course) { throw new NotFoundError(`Course with slug '${params.courseSlug}' not found or not accessible for lesson listing.`); } 
                 
                 const module = await CourseModuleService.getModuleById(params.moduleId);
@@ -505,7 +542,7 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
         async (context: OptionallyAuthenticatedContext & { params: { courseSlug: string, moduleId: string, lessonId: string } }) => {
             const { params, set, member } = context;
             try {
-                const course = await CourseService.getCourseBySlug(params.courseSlug, member?.id);
+                const course = await CourseService.getCourseBySlug(params.courseSlug, member);
                 if (!course) { 
                     throw new NotFoundError(`Course with slug '${params.courseSlug}' not found or not accessible for lesson view.`); 
                 }

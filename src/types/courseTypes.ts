@@ -1,4 +1,5 @@
 import { Tag } from './tagTypes';
+import { MemberWithPermissionAndSubscription } from './memberTypes';
 
 export interface Course {
     id: string;
@@ -12,6 +13,8 @@ export interface Course {
     published: boolean;
     verified: boolean;
     tags?: Tag[];
+    member?: Partial<MemberWithPermissionAndSubscription>;
+    modules?: CourseModulePreview[] | CourseModuleWithLessons[];
 }
 
 export interface CourseModule {
@@ -20,6 +23,7 @@ export interface CourseModule {
     created_at: string;
     updated_at: string | null;
     title: string;
+    slug: string;
     description: string | null;
     order: number;
 }
@@ -30,7 +34,6 @@ export interface Lesson {
     created_at: string;
     updated_at: string | null;
     order: number;
-
     question_prompt: string;
     exercise_type: string;
     expected_answer: string;
@@ -39,12 +42,16 @@ export interface Lesson {
     answer_format_hint?: string | null;
 }
 
-// Tipos para entrada de dados no banco (sem campos gerados automaticamente como id, created_at, updated_at)
-// Mas INCLUINDO IDs de relacionamento que serão adicionados pela lógica da rota antes de chamar o serviço.
+export interface CourseModulePreview extends Pick<CourseModule, 'id' | 'title' | 'slug' | 'order'> {}
+
+export interface CourseModuleWithLessons extends CourseModule {
+    lessons: Lesson[];
+}
+
 export interface CourseDbInput {
     title: string;
     description?: string | null;
-    member_id: string; // Adicionado de volta, obrigatório
+    member_id: string;
     is_paid?: boolean;
     tagNames?: string[] | null;
 }
@@ -52,14 +59,13 @@ export interface CourseDbInput {
 export interface CourseModuleDbInput {
     title: string;
     description?: string | null;
-    course_id: string; // Adicionado de volta, obrigatório
+    course_id: string;
     order: number;
 }
 
 export interface LessonDbInput {
     course_module_id: string;
     order: number;
-
     question_prompt: string;
     exercise_type: string;
     expected_answer: string;
@@ -68,12 +74,10 @@ export interface LessonDbInput {
     answer_format_hint?: string | null;
 }
 
-// Tipos para atualização de dados no banco (todos os campos de input são opcionais)
 export interface CourseDbUpdate {
     title?: string;
     description?: string | null;
     is_paid?: boolean;
-    // published e verified não serão atualizáveis diretamente por aqui
     tagNames?: string[] | null;
 }
 
@@ -85,7 +89,6 @@ export interface CourseModuleDbUpdate {
 
 export interface LessonDbUpdate {
     order?: number;
-
     question_prompt?: string;
     exercise_type?: string;
     expected_answer?: string;

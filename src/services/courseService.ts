@@ -8,6 +8,9 @@ import { Tag } from '../types/tagTypes';
 import { TagService } from './tagService';
 import { generateSlug } from '../utils/slugUtils';
 import { DatabaseError, NotFoundError, ForbiddenError } from '../utils/errors';
+import { UserPermission } from '../types/permissions';
+import { MemberWithPermissionAndSubscription } from '../types/memberTypes';
+import { CourseModuleService } from './courseModuleService';
 
 const TABLE_COURSES = 'courses';
 const TABLE_COURSE_TAGS = 'course_tags';
@@ -119,23 +122,20 @@ export class CourseService {
         return { ownerId: data.member_id, courseId: data.id };
     }
 
-    static async getAllCourses(requestingMemberId?: string): Promise<Course[]> {
-        const query = supabase
+    static async getAllCourses(requestingMember?: MemberWithPermissionAndSubscription): Promise<Course[]> {
+        let query = supabase
             .from(TABLE_COURSES)
             .select(this.COURSE_FIELDS_SELECT)
             .order('created_at', { ascending: false });
 
-        // If no specific member is requesting, or if they are not an admin/owner (future check),
-        // only show published courses.
-        // For now, simple published check. This logic will be expanded by middleware for subscribers.
-        if (!requestingMemberId) { // Simplified: only show published if no user context
-            query.eq('published', true);
+        if (requestingMember && requestingMember.permission === UserPermission.ADMIN) {
+            // Admin sees all courses, published or not
+        } else if (requestingMember && requestingMember.id) {
+            // Non-admin member: sees their own (published or not) + others' published
+            query = query.or(`published.eq.true,member_id.eq.${requestingMember.id}`);
         } else {
-            // If a user is requesting, allow them to see their own unpublished courses
-            // query.or(`published.eq.true,and(published.eq.false,member_id.eq.${requestingMemberId})`);
-            // This logic is complex for a simple service call and will be handled by route-level logic or middleware
-            // For now, to allow owners to see their drafts via direct API calls if needed for an admin panel for example:
-            query.or(`published.eq.true,member_id.eq.${requestingMemberId}`);
+            // No member (public): sees only published courses
+            query = query.eq('published', true);
         }
 
         const { data, error } = await query;
@@ -148,12 +148,11 @@ export class CourseService {
             tags: await this._getCourseTags(course.id)
         })));
         
-        // Further filter for non-owners if they somehow got unpublished courses
-        // This is a safeguard, primary filtering should be in the query or middleware
-        return coursesWithTags.filter(course => course.published || course.member_id === requestingMemberId);
+        // Filter removed as query logic is now more comprehensive
+        return coursesWithTags;
     }
     
-    static async getCourseBySlug(slug: string, requestingMemberId?: string): Promise<Course | null> {
+    static async getCourseBySlug(slug: string, requestingMember?: MemberWithPermissionAndSubscription): Promise<Course | null> {
         const { data, error } = await supabase
             .from(TABLE_COURSES)
             .select(this.COURSE_FIELDS_SELECT)
@@ -163,15 +162,41 @@ export class CourseService {
         if (error) throw new DatabaseError(`Failed to fetch course by slug: ${error.message}`);
         if (!data) return null;
 
-        // Check if the course is published or if the requester is the owner
-        if (!data.published && data.member_id !== requestingMemberId) {
-            return null; // Not published and not the owner, so treat as not found/accessible
+        // Check if the course is published or if the requester is the owner or an admin
+        if (!data.published && 
+            (!requestingMember || (data.member_id !== requestingMember.id && requestingMember.permission !== UserPermission.ADMIN))
+        ) {
+            return null; // Not published and not the owner/admin
         }
 
+        const courseBase = { ...data, tags: await this._getCourseTags(data.id) };
+
+        // Logic for paid courses and preview data
+        if (courseBase.published && courseBase.is_paid) {
+            const isOwner = requestingMember?.id === courseBase.member_id;
+            const isSubscriber = requestingMember?.is_subscriber === true;
+
+            if (!isOwner && !isSubscriber) {
+                // Return public preview: course info + module titles only
+                // Assuming CourseModuleService has a method to get just titles or limited module info
+                const modulePreviews = await CourseModuleService.getModulesPreviewByCourseId(courseBase.id);
+                return {
+                    ...courseBase,
+                    modules: modulePreviews, // Array of module previews (e.g., { id, title, order })
+                    // lessons are not included in the preview, or only a count if desired
+                } as Course; // Adjust Course type if it expects full modules/lessons
+            }
+        }
+
+        // If not a restricted paid course view, or if user has access (owner/subscriber),
+        // or if it's a draft accessed by owner/admin, return full course details.
+        // Assuming CourseModuleService has a method to get full modules with their lessons
+        const fullModules = await CourseModuleService.getFullModulesWithLessonsByCourseId(courseBase.id, courseBase.slug, requestingMember);
+        
         return {
-            ...data,
-            tags: await this._getCourseTags(data.id)
-        };
+            ...courseBase,
+            modules: fullModules
+        } as Course;
     }
 
     static async createCourse(input: CourseDbInput): Promise<Course> {

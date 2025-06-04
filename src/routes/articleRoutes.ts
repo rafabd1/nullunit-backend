@@ -70,7 +70,9 @@ export const articleRoutes = new Elysia({ prefix: '/articles' })
         async (context: OptionallyAuthenticatedContext) => {
             const { set, member } = context;
             try {
-                const articles = await ArticleService.getAllArticles(member?.id);
+                const articles = await ArticleService.getAllArticles(
+                    member ? { id: member.id, permission: member.permission } : undefined
+                );
                 return articles;
             } catch (error: any) {
                 console.error("Error fetching all articles:", error);
@@ -101,7 +103,10 @@ export const articleRoutes = new Elysia({ prefix: '/articles' })
         async (context: OptionallyAuthenticatedContext & { params: { slug: string } }) => {
             const { params, set, member } = context;
             try {
-                const article = await ArticleService.getArticleBySlug(params.slug, member?.id);
+                const article = await ArticleService.getArticleBySlug(
+                    params.slug, 
+                    member ? { id: member.id, permission: member.permission } : undefined
+                );
                 if (!article) {
                     set.status = 404;
                     return { error: 'Not Found', message: 'Article not found or not accessible.' };
@@ -193,12 +198,13 @@ export const articleRoutes = new Elysia({ prefix: '/articles' })
                     else if (body.hasOwnProperty('description') && body.description === null) updatePayload.description = null;
                     if (body.content !== undefined) updatePayload.content = sanitizeContent(body.content);
                     if (body.tagNames !== undefined) updatePayload.tagNames = body.tagNames;
-                    if (body.published !== undefined) updatePayload.published = body.published;
 
-                    const hasDataToUpdate = Object.keys(updatePayload).some(key => (updatePayload as any)[key] !== undefined || key === 'tagNames');
+                    const hasMeaningfulUpdateInput = Object.keys(updatePayload).some(key => 
+                        key !== 'tagNames' && (updatePayload as any)[key] !== undefined
+                    ) || (updatePayload.tagNames !== undefined && updatePayload.tagNames !== null);
 
-                    if (!hasDataToUpdate) {
-                        const currentArticle = await ArticleService.getArticleBySlug(params.slug, user.id);
+                    if (!hasMeaningfulUpdateInput) {
+                        const currentArticle = await ArticleService.getArticleBySlug(params.slug, { id: user.id });
                         if (!currentArticle) {
                             authSet.status = 404;
                             return { error: 'Not found', message: 'Article to update not found.' };

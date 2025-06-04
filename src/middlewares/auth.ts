@@ -147,9 +147,9 @@ export const checkPaidCourseAccess = () => {
             throw new Error('Course slug not provided in route parameters.');
         }
 
-        // Fetch course - member.id allows owner to fetch their unpublished/paid courses
+        // Fetch course - member object (which can be undefined) is now passed directly.
         // The service's getCourseBySlug already handles general published/owner visibility.
-        const course = await CourseService.getCourseBySlug(courseSlug, member?.id);
+        const course = await CourseService.getCourseBySlug(courseSlug, member);
 
         if (!course) {
             set.status = 404;

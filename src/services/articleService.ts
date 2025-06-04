@@ -8,6 +8,7 @@ import { generateSlug } from '../utils/slugUtils';
 import { TagService } from './tagService';
 import { Tag } from '../types/tagTypes';
 import { DatabaseError, NotFoundError, ForbiddenError } from '../utils/errors';
+import { UserPermission } from '../types/permissions';
 
 const TABLE_ARTICLES = 'articles';
 const TABLE_ARTICLE_TAGS = 'article_tags';
@@ -102,20 +103,19 @@ export class ArticleService {
      * @description Get all published articles with their tags.
      * TODO: Add pagination, filtering by tags, etc. in the future.
      */
-    static async getAllArticles(requestingMemberId?: string): Promise<Article[]> {
+    static async getAllArticles(requestingMember?: { id: string, permission?: string }): Promise<Article[]> {
         let query = supabase
             .from(TABLE_ARTICLES)
             .select(this.ARTICLE_FIELDS_SELECT)
             .order('created_at', { ascending: false });
 
-        if (requestingMemberId) {
-            // If a member is requesting, show their own articles (published or not) OR any published articles.
-            // This OR condition might be complex for Supabase direct query. 
-            // A simpler approach: fetch all by member, then fetch all published, then merge and deduplicate.
-            // Or, adjust query to be `(published = true OR member_id = requestingMemberId)`
-            query = query.or(`published.eq.true,member_id.eq.${requestingMemberId}`);
+        if (requestingMember && requestingMember.permission === UserPermission.ADMIN) {
+            // Admin sees all articles, published or not - no additional filters needed on published status or member_id
+        } else if (requestingMember && requestingMember.id) {
+            // Non-admin member: sees their own (published or not) + others' published
+            query = query.or(`published.eq.true,member_id.eq.${requestingMember.id}`);
         } else {
-            // No member requesting, only show published articles
+            // No member (public): sees only published articles
             query = query.eq('published', true);
         }
 
@@ -128,15 +128,16 @@ export class ArticleService {
             ...article,
             tags: await this._getArticleTags(article.id)
         })));
-
+        
+        // No longer need the post-filter as the query is more precise
         return articlesWithTags;
     }
 
     /**
      * @description Get a specific article by its slug, including tags.
-     * It fetches the article only if it's published, or if the requesting member is the author.
+     * It fetches the article only if it's published, or if the requesting member is the author or an admin.
      */
-    static async getArticleBySlug(slug: string, requestingMemberId?: string): Promise<Article | null> {
+    static async getArticleBySlug(slug: string, requestingMember?: { id: string, permission?: string }): Promise<Article | null> {
         const { data, error } = await supabase
             .from(TABLE_ARTICLES)
             .select(this.ARTICLE_FIELDS_SELECT)
@@ -150,8 +151,11 @@ export class ArticleService {
             return null;
         }
 
-        if (!data.published && data.member_id !== requestingMemberId) {
-            return null;
+        // Check if the article is published or if the requester is the owner or an admin
+        if (!data.published && 
+            (!requestingMember || (data.member_id !== requestingMember.id && requestingMember.permission !== UserPermission.ADMIN))
+        ) {
+            return null; // Not published and not the owner/admin, so treat as not found/accessible
         }
 
         return {
@@ -238,8 +242,11 @@ export class ArticleService {
 
         const hasMeaningfulUpdate = Object.keys(articleUpdates).length > 0;
 
-        if (!hasMeaningfulUpdate && (tagNames === undefined)) {
-            const currentArticleData = await this.getArticleBySlug(articleSlug, requestingMemberId);
+        if (!hasMeaningfulUpdate && (tagNames === undefined || tagNames === null || tagNames.length === 0)) {
+            // If no direct article field updates and no new tags are provided,
+            // fetch the current article data to return.
+            // The requestingMemberId is the owner, so they can access their article.
+            const currentArticleData = await this.getArticleBySlug(articleSlug, { id: requestingMemberId }); // Pass only ID, permission isn't strictly needed here as ownership is already confirmed
             if (!currentArticleData) throw new NotFoundError('Article not found after no-op update check.');
             return currentArticleData;
         }
