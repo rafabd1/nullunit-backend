@@ -209,15 +209,15 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
             }
         }
     )
-    .put('/:courseSlug/modules/:moduleId', 
-        async (context: ElysiaBaseContext & { params: { courseSlug: string, moduleId: string }, body: typeof courseModuleUpdateSchema.static }) => {
+    .put('/:courseSlug/modules/:moduleSlug', 
+        async (context: ElysiaBaseContext & { params: { courseSlug: string, moduleSlug: string }, body: typeof courseModuleUpdateSchema.static }) => {
             const { params, body, request, set } = context;
             return requireAuthor(async ({ user, set: authSet, member }: AuthenticatedContext) => {
                 try {
-                    const updatedModule = await CourseModuleService.updateModule(params.moduleId, params.courseSlug, body, user.id);
+                    const updatedModule = await CourseModuleService.updateModule(params.moduleSlug, params.courseSlug, body, user.id);
                     return updatedModule;
                 } catch (error: any) {
-                    console.error(`Error updating module ${params.moduleId} in course ${params.courseSlug}:`, error);
+                    console.error(`Error updating module ${params.moduleSlug} in course ${params.courseSlug}:`, error);
                     if (error instanceof ValidationError) { authSet.status = 400; return { error: 'Validation Error', message: error.message }; }
                     if (error instanceof NotFoundError) { authSet.status = 404; return { error: 'Not Found', message: error.message }; }
                     if (error instanceof ForbiddenError) { authSet.status = 403; return { error: 'Forbidden', message: error.message }; }
@@ -226,7 +226,7 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
             })(context as any);
         },
         {
-            params: t.Object({ courseSlug: t.String(), moduleId: t.String({ format: 'uuid' }) }),
+            params: t.Object({ courseSlug: t.String(), moduleSlug: t.String() }),
             body: courseModuleUpdateSchema,
             detail: {
                 tags: ['Course Modules'],
@@ -242,16 +242,16 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
             }
         }
     )
-    .delete('/:courseSlug/modules/:moduleId', 
-        async (context: ElysiaBaseContext & { params: { courseSlug: string, moduleId: string } }) => {
+    .delete('/:courseSlug/modules/:moduleSlug', 
+        async (context: ElysiaBaseContext & { params: { courseSlug: string, moduleSlug: string } }) => {
             const { params, request, set } = context;
             return requireAuthor(async ({ user, set: authSet, member }: AuthenticatedContext) => {
                 try {
-                    await CourseModuleService.deleteModule(params.moduleId, params.courseSlug, user.id);
+                    await CourseModuleService.deleteModule(params.moduleSlug, params.courseSlug, user.id);
                     authSet.status = 204;
                     return null;
                 } catch (error: any) {
-                    console.error(`Error deleting module ${params.moduleId} in course ${params.courseSlug}:`, error);
+                    console.error(`Error deleting module ${params.moduleSlug} in course ${params.courseSlug}:`, error);
                     if (error instanceof NotFoundError) { authSet.status = 404; return { error: 'Not Found', message: error.message }; }
                     if (error instanceof ForbiddenError) { authSet.status = 403; return { error: 'Forbidden', message: error.message }; }
                     authSet.status = 500; return { error: 'Internal Server Error', message: error.message || 'Failed to delete module.' };
@@ -259,7 +259,7 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
             })(context as any);
         },
         {
-            params: t.Object({ courseSlug: t.String(), moduleId: t.String({ format: 'uuid' }) }),
+            params: t.Object({ courseSlug: t.String(), moduleSlug: t.String() }),
             detail: {
                 tags: ['Course Modules'],
                 description: 'Delete a course module', 
@@ -272,18 +272,26 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
         }
     )
 
-    // --- Lesson Routes (Protegidas por requireAuthor) ---
-    .post('/:courseSlug/modules/:moduleId/lessons', 
-        async (context: ElysiaBaseContext & { params: { courseSlug: string, moduleId: string }, body: typeof lessonInputSchema.static }) => {
+    // --- Lesson Routes (Protegidas por requireAuthor para POST, PUT, DELETE) ---
+    // Padronizando para :moduleSlug
+    .post('/:courseSlug/modules/:moduleSlug/lessons', 
+        async (context: ElysiaBaseContext & { params: { courseSlug: string, moduleSlug: string }, body: typeof lessonInputSchema.static }) => {
             const { params, body, request, set } = context;
             return requireAuthor(async ({ user, set: authSet, member }: AuthenticatedContext) => {
                 try {
-                    const lessonDataForService = { ...body, course_module_id: params.moduleId };
-                    const lesson = await LessonService.createLesson(lessonDataForService, params.moduleId, params.courseSlug, user.id);
+                    // Primeiro, obter o ID do módulo a partir dos slugs
+                    const courseModule = await CourseModuleService.getModuleBySlugs(params.courseSlug, params.moduleSlug, member);
+                    if (!courseModule) {
+                        throw new NotFoundError(`Module with slug '${params.moduleSlug}' not found in course '${params.courseSlug}'.`);
+                    }
+                    const moduleId = courseModule.id;
+
+                    const lessonDataForService = { ...body, course_module_id: moduleId };                   
+                    const lesson = await LessonService.createLesson(lessonDataForService, moduleId, params.courseSlug, user.id);
                     authSet.status = 201;
                     return lesson;
                 } catch (error: any) {
-                    console.error(`Error creating lesson in module ${params.moduleId}:`, error);
+                    console.error(`Error creating lesson in module ${params.moduleSlug} for course ${params.courseSlug}:`, error);
                     if (error instanceof ValidationError) { authSet.status = 400; return { error: 'Validation Error', message: error.message }; }
                     if (error instanceof NotFoundError) { authSet.status = 404; return { error: 'Not Found', message: error.message }; }
                     if (error instanceof ForbiddenError) { authSet.status = 403; return { error: 'Forbidden', message: error.message }; }
@@ -292,7 +300,7 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
             })(context as any);
         },
         {
-            params: t.Object({ courseSlug: t.String(), moduleId: t.String({ format: 'uuid' }) }),
+            params: t.Object({ courseSlug: t.String(), moduleSlug: t.String() }),
             body: lessonInputSchema,
             detail: {
                 tags: ['Lessons'],
@@ -308,15 +316,21 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
             }
         }
     )
-    .put('/:courseSlug/modules/:moduleId/lessons/:lessonId', 
-        async (context: ElysiaBaseContext & { params: { courseSlug: string, moduleId: string, lessonId: string }, body: typeof lessonUpdateSchema.static }) => {
+    .put('/:courseSlug/modules/:moduleSlug/lessons/:lessonId', 
+        async (context: ElysiaBaseContext & { params: { courseSlug: string, moduleSlug: string, lessonId: string }, body: typeof lessonUpdateSchema.static }) => {
             const { params, body, request, set } = context;
             return requireAuthor(async ({ user, set: authSet, member }: AuthenticatedContext) => {
                 try {
-                    const updatedLesson = await LessonService.updateLesson(params.lessonId, body, params.moduleId, params.courseSlug, user.id);
+                    const courseModule = await CourseModuleService.getModuleBySlugs(params.courseSlug, params.moduleSlug, member);
+                    if (!courseModule) {
+                        throw new NotFoundError(`Module with slug '${params.moduleSlug}' not found in course '${params.courseSlug}'.`);
+                    }
+                    const moduleId = courseModule.id;
+
+                    const updatedLesson = await LessonService.updateLesson(params.lessonId, body, moduleId, params.courseSlug, user.id);
                     return updatedLesson;
                 } catch (error: any) {
-                    console.error(`Error updating lesson ${params.lessonId}:`, error);
+                    console.error(`Error updating lesson ${params.lessonId} in module ${params.moduleSlug} for course ${params.courseSlug}:`, error);
                     if (error instanceof ValidationError) { authSet.status = 400; return { error: 'Validation Error', message: error.message }; }
                     if (error instanceof NotFoundError) { authSet.status = 404; return { error: 'Not Found', message: error.message }; }
                     if (error instanceof ForbiddenError) { authSet.status = 403; return { error: 'Forbidden', message: error.message }; }
@@ -325,7 +339,7 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
             })(context as any);
         },
         {
-            params: t.Object({ courseSlug: t.String(), moduleId: t.String({ format: 'uuid' }), lessonId: t.String({ format: 'uuid' }) }),
+            params: t.Object({ courseSlug: t.String(), moduleSlug: t.String(), lessonId: t.String({ format: 'uuid' }) }),
             body: lessonUpdateSchema,
             detail: {
                 tags: ['Lessons'],
@@ -341,16 +355,22 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
             }
         }
     )
-    .delete('/:courseSlug/modules/:moduleId/lessons/:lessonId', 
-        async (context: ElysiaBaseContext & { params: { courseSlug: string, moduleId: string, lessonId: string } }) => {
+    .delete('/:courseSlug/modules/:moduleSlug/lessons/:lessonId', 
+        async (context: ElysiaBaseContext & { params: { courseSlug: string, moduleSlug: string, lessonId: string } }) => {
             const { params, request, set } = context;
             return requireAuthor(async ({ user, set: authSet, member }: AuthenticatedContext) => {
                 try {
-                    await LessonService.deleteLesson(params.lessonId, params.moduleId, params.courseSlug, user.id);
+                    const courseModule = await CourseModuleService.getModuleBySlugs(params.courseSlug, params.moduleSlug, member);
+                    if (!courseModule) {
+                        throw new NotFoundError(`Module with slug '${params.moduleSlug}' not found in course '${params.courseSlug}'.`);
+                    }
+                    const moduleId = courseModule.id;
+
+                    await LessonService.deleteLesson(params.lessonId, moduleId, params.courseSlug, user.id);
                     authSet.status = 204;
                     return null;
                 } catch (error: any) {
-                    console.error(`Error deleting lesson ${params.lessonId}:`, error);
+                    console.error(`Error deleting lesson ${params.lessonId} in module ${params.moduleSlug} for course ${params.courseSlug}:`, error);
                     if (error instanceof NotFoundError) { authSet.status = 404; return { error: 'Not Found', message: error.message }; }
                     if (error instanceof ForbiddenError) { authSet.status = 403; return { error: 'Forbidden', message: error.message }; }
                     authSet.status = 500; return { error: 'Internal Server Error', message: error.message || 'Failed to delete lesson.' };
@@ -358,7 +378,7 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
             })(context as any);
         },
         {
-            params: t.Object({ courseSlug: t.String(), moduleId: t.String({ format: 'uuid' }), lessonId: t.String({ format: 'uuid' }) }),
+            params: t.Object({ courseSlug: t.String(), moduleSlug: t.String(), lessonId: t.String({ format: 'uuid' }) }),
             detail: {
                 tags: ['Lessons'],
                 description: 'Delete a lesson', 
@@ -504,22 +524,22 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
             }
         }
     )
-    .get('/:courseSlug/modules/:moduleId/lessons', 
-        async (context: OptionallyAuthenticatedContext & { params: { courseSlug: string, moduleId: string } }) => {
+    .get('/:courseSlug/modules/:moduleSlug/lessons', 
+        async (context: OptionallyAuthenticatedContext & { params: { courseSlug: string, moduleSlug: string } }) => {
             const { params, set, member } = context;
             try {
                 const course = await CourseService.getCourseBySlug(params.courseSlug, member);
                 if (!course) { throw new NotFoundError(`Course with slug '${params.courseSlug}' not found or not accessible for lesson listing.`); } 
                 
-                const module = await CourseModuleService.getModuleById(params.moduleId);
-                if (!module || module.course_id !== course.id) { 
-                    throw new NotFoundError(`Module with ID '${params.moduleId}' not found in course '${params.courseSlug}'.`); 
+                const courseModule = await CourseModuleService.getModuleBySlugs(params.courseSlug, params.moduleSlug, member);
+                if (!courseModule || courseModule.course_id !== course.id) { 
+                    throw new NotFoundError(`Module with slug '${params.moduleSlug}' not found in course '${params.courseSlug}'.`); 
                 }
                 
-                const lessons = await LessonService.getAllLessonsForModule(params.moduleId, params.courseSlug);
+                const lessons = await LessonService.getAllLessonsForModule(courseModule.id, params.courseSlug);
                 return lessons;
             } catch (error: any) {
-                console.error(`Error fetching lessons for module ${params.moduleId}:`, error);
+                console.error(`Error fetching lessons for module ${params.moduleSlug} in course ${params.courseSlug}:`, error);
                 if (error instanceof NotFoundError) { set.status = 404; return { error: 'Not Found', message: error.message }; }
                 if (error instanceof ForbiddenError) { set.status = 403; return { error: 'Forbidden', message: error.message }; }
                 set.status = 500; return { error: 'Internal Server Error', message: error.message || 'Failed to fetch lessons.' };
@@ -527,7 +547,7 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
         },
         {
             beforeHandle: [optionalAuth() as any, checkPaidCourseAccess() as any],
-            params: t.Object({ courseSlug: t.String(), moduleId: t.String({ format: 'uuid' }) }),
+            params: t.Object({ courseSlug: t.String(), moduleSlug: t.String() }),
             detail: {
                 tags: ['Lessons'],
                 description: 'Get all lessons for a module (access controlled for paid courses)',
@@ -538,25 +558,25 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
             }
         }
     )
-    .get('/:courseSlug/modules/:moduleId/lessons/:lessonId', 
-        async (context: OptionallyAuthenticatedContext & { params: { courseSlug: string, moduleId: string, lessonId: string } }) => {
+    .get('/:courseSlug/modules/:moduleSlug/lessons/:lessonId', 
+        async (context: OptionallyAuthenticatedContext & { params: { courseSlug: string, moduleSlug: string, lessonId: string } }) => {
             const { params, set, member } = context;
             try {
                 const course = await CourseService.getCourseBySlug(params.courseSlug, member);
                 if (!course) { 
                     throw new NotFoundError(`Course with slug '${params.courseSlug}' not found or not accessible for lesson view.`); 
                 }
-                const module = await CourseModuleService.getModuleById(params.moduleId);
-                if (!module || module.course_id !== course.id) { 
-                    throw new NotFoundError(`Module with ID '${params.moduleId}' not found in course '${params.courseSlug}'.`); 
+                const courseModule = await CourseModuleService.getModuleBySlugs(params.courseSlug, params.moduleSlug, member);
+                if (!courseModule || courseModule.course_id !== course.id) { 
+                    throw new NotFoundError(`Module with slug '${params.moduleSlug}' not found in course '${params.courseSlug}'.`); 
                 }
                 const lesson = await LessonService.getLessonById(params.lessonId);
-                if (!lesson || lesson.course_module_id !== module.id) { 
-                    throw new NotFoundError(`Lesson with ID '${params.lessonId}' not found in module '${params.moduleId}'.`); 
+                if (!lesson || lesson.course_module_id !== courseModule.id) { 
+                    throw new NotFoundError(`Lesson with ID '${params.lessonId}' not found in module '${params.moduleSlug}'.`); 
                 }
                 return lesson;
             } catch (error: any) {
-                console.error(`Error fetching lesson ${params.lessonId}:`, error);
+                console.error(`Error fetching lesson ${params.lessonId} in module ${params.moduleSlug} for course ${params.courseSlug}:`, error);
                 if (error instanceof NotFoundError) { set.status = 404; return { error: 'Not Found', message: error.message }; }
                 if (error instanceof ForbiddenError) { set.status = 403; return { error: 'Forbidden', message: error.message }; }
                 set.status = 500; return { error: 'Internal Server Error', message: error.message || 'Failed to fetch lesson.' };
@@ -564,7 +584,7 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
         },
         {
             beforeHandle: [optionalAuth() as any, checkPaidCourseAccess() as any],
-            params: t.Object({ courseSlug: t.String(), moduleId: t.String({ format: 'uuid' }), lessonId: t.String({ format: 'uuid' }) }),
+            params: t.Object({ courseSlug: t.String(), moduleSlug: t.String(), lessonId: t.String({ format: 'uuid' }) }),
             detail: {
                 tags: ['Lessons'],
                 description: 'Get a specific lesson by ID (access controlled for paid courses)',
