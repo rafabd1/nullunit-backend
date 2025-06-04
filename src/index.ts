@@ -9,6 +9,7 @@ import { articleRoutes } from './routes/articleRoutes';
 import { likeRoutes } from './routes/likeRoutes';
 import { portfolioRoutes } from './routes/portfolioRoutes';
 import { tagRoutes } from './routes/tagRoutes';
+import { courseRoutes } from './routes/courseRoutes';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
 const isProduction = process.env.NODE_ENV === 'production';
@@ -36,7 +37,8 @@ const app = new Elysia()
                 { name: 'articles', description: 'Article management endpoints' },
                 { name: 'likes', description: 'Content interaction endpoints' },
                 { name: 'portfolio', description: 'Portfolio project endpoints' },
-                { name: 'Tags', description: 'Tag management and query endpoints' }
+                { name: 'Tags', description: 'Tag management and query endpoints' },
+                { name: 'Courses', description: 'Course management endpoints' }
             ],
             components: {
                 securitySchemes: {
@@ -134,6 +136,7 @@ const app = new Elysia()
         .use(likeRoutes)
         .use(portfolioRoutes)
         .use(tagRoutes)
+        .use(courseRoutes)
     )
     .listen(PORT);
 

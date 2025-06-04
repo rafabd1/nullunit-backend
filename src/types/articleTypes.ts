@@ -39,13 +39,3 @@ export type ArticleDbUpdate = Partial<Omit<ArticleInputData, 'tagNames'>> & {
     tagNames?: string[] | null; // Permitir null para indicar remoção de todas as tags
     // published e verified foram removidos daqui, não serão atualizáveis via ArticleService.updateArticle
 };
-
-// Remover tipos antigos:
-// export type ModuleInputData = typeof moduleInputSchema._type & { ... };
-// export type SubArticleInputData = typeof subArticleInputSchema._type & { ... };
-// export interface ModuleDbInput extends ModuleInputData { ... }
-// export interface SubArticleDbInput extends SubArticleInputData { ... }
-// export interface ArticleModule { ... }
-// export interface SubArticle { ... }
-// export type ModuleDbUpdate = Partial<ModuleInputData>;
-// export type SubArticleDbUpdate = Partial<SubArticleInputData>;
