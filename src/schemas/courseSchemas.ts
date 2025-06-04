@@ -97,25 +97,40 @@ export const lessonSchema = t.Object({
             nullable: true
         })
     ),
-    title: t.String(),
-    content: t.String(), // Conteúdo extenso, pode ser Markdown
-    order: t.Unsafe<number>({ type: 'integer', format: 'int32', description: 'Lesson display order' })
+    order: t.Unsafe<number>({ type: 'integer', format: 'int32', description: 'Lesson display order' }),
+
+    question_prompt: t.String({ description: 'The primary text/prompt for the exercise.' }),
+    exercise_type: t.String({ description: 'Defines the type of exercise (e.g., flag, text_input).' }),
+    expected_answer: t.String({ description: 'The correct answer for the exercise (sensitive, consider if this should be in all GET responses).' }),
+    options_data: t.Optional(t.Any({ description: 'JSON data for exercise options (e.g., for multiple choice).'})),
+    answer_placeholder: t.Optional(t.String({ description: 'A placeholder for the answer format/length.' })),
+    answer_format_hint: t.Optional(t.String({ description: 'Optional hint for the answer format.' }))
 });
 
 // Schema para Lesson (Input - Criação)
 export const lessonInputSchema = t.Object({
     // course_module_id será pego do parâmetro da rota
-    title: t.String({ minLength: 3, maxLength: 200 }),
-    content: t.String({ minLength: 10 }),
-    order: t.Integer({ minimum: 0 })
+    order: t.Integer({ minimum: 0 }),
+
+    question_prompt: t.String({ minLength: 5, description: 'The primary text/prompt for the exercise.' }),
+    exercise_type: t.String({ minLength: 3, description: 'Defines the type of exercise (e.g., flag, text_input).' }),
+    expected_answer: t.String({ minLength: 1, description: 'The correct answer for the exercise.' }),
+    options_data: t.Optional(t.Any({ description: 'JSON data for exercise options.'})),
+    answer_placeholder: t.Optional(t.String({ maxLength: 100, description: 'Optional placeholder for the answer format/length.' })),
+    answer_format_hint: t.Optional(t.String({ maxLength: 200, description: 'Optional hint for the answer format.' }))
 });
 
 // Schema para Lesson (Input - Atualização)
 export const lessonUpdateSchema = t.Partial(
     t.Object({
-        title: t.String({ minLength: 3, maxLength: 200 }),
-        content: t.String({ minLength: 10 }),
-        order: t.Integer({ minimum: 0 })
+        order: t.Integer({ minimum: 0 }),
+
+        question_prompt: t.String({ minLength: 5 }),
+        exercise_type: t.String({ minLength: 3 }),
+        expected_answer: t.String({ minLength: 1 }),
+        options_data: t.Any(),
+        answer_placeholder: t.String({ maxLength: 100 }),
+        answer_format_hint: t.String({ maxLength: 200 })
     }),
     { minProperties: 1 }
 );

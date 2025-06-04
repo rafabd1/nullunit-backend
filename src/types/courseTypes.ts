@@ -29,9 +29,14 @@ export interface Lesson {
     course_module_id: string;
     created_at: string;
     updated_at: string | null;
-    title: string;
-    content: string; // e.g., Markdown, video embed
     order: number;
+
+    question_prompt: string;
+    exercise_type: string;
+    expected_answer: string;
+    options_data?: any | null;
+    answer_placeholder?: string | null;
+    answer_format_hint?: string | null;
 }
 
 // Tipos para entrada de dados no banco (sem campos gerados automaticamente como id, created_at, updated_at)
@@ -52,10 +57,15 @@ export interface CourseModuleDbInput {
 }
 
 export interface LessonDbInput {
-    title: string;
-    content: string;
-    course_module_id: string; // Adicionado de volta, obrigatório
+    course_module_id: string;
     order: number;
+
+    question_prompt: string;
+    exercise_type: string;
+    expected_answer: string;
+    options_data?: any | null;
+    answer_placeholder?: string | null;
+    answer_format_hint?: string | null;
 }
 
 // Tipos para atualização de dados no banco (todos os campos de input são opcionais)
@@ -74,7 +84,12 @@ export interface CourseModuleDbUpdate {
 }
 
 export interface LessonDbUpdate {
-    title?: string;
-    content?: string;
     order?: number;
+
+    question_prompt?: string;
+    exercise_type?: string;
+    expected_answer?: string;
+    options_data?: any | null;
+    answer_placeholder?: string | null;
+    answer_format_hint?: string | null;
 } 

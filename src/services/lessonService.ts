@@ -14,9 +14,13 @@ export class LessonService {
     private static readonly LESSON_FIELDS_SELECT = `
         id,
         course_module_id,
-        title,
-        content,
-        order,
+        "order",
+        question_prompt,
+        exercise_type,
+        expected_answer,
+        options_data,
+        answer_placeholder,
+        answer_format_hint,
         created_at,
         updated_at
     `;
@@ -79,16 +83,37 @@ export class LessonService {
             throw new NotFoundError(`Module with ID "${moduleId}" not found or does not belong to course "${courseSlug}".`);
         }
 
-        const { title, content, order } = input;
+        const { 
+            order, 
+            question_prompt, 
+            exercise_type, 
+            expected_answer, 
+            options_data, 
+            answer_placeholder,
+            answer_format_hint 
+        } = input;
+
         if (order === undefined || order < 0) {
             throw new ValidationError("Lesson 'order' must be a non-negative integer.");
+        }
+        if (!question_prompt || !exercise_type || !expected_answer) {
+            throw new ValidationError('question_prompt, exercise_type, and expected_answer are required for a lesson.');
+        }
+
+        let finalAnswerPlaceholder = answer_placeholder;
+        if (!finalAnswerPlaceholder && (exercise_type === 'flag' || exercise_type === 'text_input')) {
+            finalAnswerPlaceholder = expected_answer.replace(/[a-zA-Z0-9]/g, '.');
         }
 
         const lessonToInsert = {
             course_module_id: moduleId,
-            title,
-            content,
-            order
+            order,
+            question_prompt,
+            exercise_type,
+            expected_answer,
+            options_data: options_data === undefined ? null : options_data,
+            answer_placeholder: finalAnswerPlaceholder,
+            answer_format_hint
         };
 
         const { data: newLesson, error } = await supabase
@@ -99,7 +124,6 @@ export class LessonService {
 
         if (error || !newLesson) {
             console.error('Error creating lesson:', error);
-            // TODO: Check for specific error codes
             throw new DatabaseError('Failed to create lesson.');
         }
         return newLesson;
@@ -127,13 +151,41 @@ export class LessonService {
             throw new ForbiddenError('Lesson does not belong to the specified module.');
         }
 
-        const { title, content, order } = input;
+        const { 
+            order, 
+            question_prompt, 
+            exercise_type, 
+            expected_answer, 
+            options_data, 
+            answer_placeholder, 
+            answer_format_hint 
+        } = input;
+
         if (order !== undefined && order < 0) {
             throw new ValidationError("Lesson 'order' must be a non-negative integer.");
         }
         
-        const lessonUpdates: Partial<LessonDbUpdate & { updated_at: string }> = { ...input };
-        
+        const lessonUpdates: Partial<LessonDbInput & { updated_at: string }> = {};
+        if (input.order !== undefined) lessonUpdates.order = input.order;
+        if (input.question_prompt !== undefined) lessonUpdates.question_prompt = input.question_prompt;
+        if (input.exercise_type !== undefined) lessonUpdates.exercise_type = input.exercise_type;
+        if (input.expected_answer !== undefined) lessonUpdates.expected_answer = input.expected_answer;
+        if (input.options_data !== undefined) lessonUpdates.options_data = input.options_data;
+        if (input.answer_format_hint !== undefined) lessonUpdates.answer_format_hint = input.answer_format_hint;
+
+        let finalAnswerPlaceholder = input.answer_placeholder;
+        const currentExpectedAnswer = input.expected_answer || existingLesson.expected_answer;
+        const currentExerciseType = input.exercise_type || existingLesson.exercise_type;
+
+        if (input.answer_placeholder === undefined && input.expected_answer !== undefined && (currentExerciseType === 'flag' || currentExerciseType === 'text_input')) {
+            finalAnswerPlaceholder = currentExpectedAnswer.replace(/[a-zA-Z0-9]/g, '.');
+        } else if (input.answer_placeholder !== undefined) {
+            finalAnswerPlaceholder = input.answer_placeholder;
+        }
+        if (finalAnswerPlaceholder !== undefined || input.answer_placeholder !== undefined) { 
+            lessonUpdates.answer_placeholder = finalAnswerPlaceholder;
+        }
+
         if (Object.keys(lessonUpdates).length === 0) {
             return existingLesson; 
         }
