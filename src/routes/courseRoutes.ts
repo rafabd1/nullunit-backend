@@ -86,7 +86,9 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
     }, {
         body: courseInputSchema,
         detail: {
-            summary: 'Create a new course', tags: ['Courses'], security: [{ bearerAuth: [] }],
+            tags: ['Courses'],
+            description: 'Create a new course', 
+            security: [{ bearerAuth: [] }],
             responses: {
                 '201': {
                     description: 'Course created',
@@ -126,7 +128,9 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
         params: t.Object({ courseSlug: t.String() }),
         body: courseUpdateSchema,
         detail: {
-            summary: 'Update an existing course', tags: ['Courses'], security: [{ bearerAuth: [] }],
+            tags: ['Courses'],
+            description: 'Update an existing course', 
+            security: [{ bearerAuth: [] }],
             responses: {
                 '200': {
                     description: 'Course updated',
@@ -148,7 +152,7 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
                 return null; // No content
             } catch (error: any) {
                 console.error(`Error deleting course ${params.courseSlug}:`, error);
-                 if (error instanceof NotFoundError) {
+                if (error instanceof NotFoundError) {
                     set.status = 404;
                     return { error: 'Not Found', message: error.message };
                 } else if (error instanceof ForbiddenError) {
@@ -163,7 +167,9 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
     }, {
         params: t.Object({ courseSlug: t.String() }),
         detail: {
-            summary: 'Delete a course', tags: ['Courses'], security: [{ bearerAuth: [] }],
+            tags: ['Courses'],
+            description: 'Delete a course', 
+            security: [{ bearerAuth: [] }],
             responses: {
                 '204': { description: 'Course deleted' },
                 ...commonErrorResponses
@@ -195,7 +201,9 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
         params: t.Object({ courseSlug: t.String() }),
         body: courseModuleInputSchema,
         detail: {
-            summary: 'Create a new module for a course', tags: ['Course Modules'], security: [{ bearerAuth: [] }],
+            tags: ['Course Modules'],
+            description: 'Create a new module for a course', 
+            security: [{ bearerAuth: [] }],
             responses: {
                 '201': {
                     description: 'Module created',
@@ -226,7 +234,9 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
         params: t.Object({ courseSlug: t.String(), moduleId: t.String({ format: 'uuid' }) }),
         body: courseModuleUpdateSchema,
         detail: {
-            summary: 'Update a course module', tags: ['Course Modules'], security: [{ bearerAuth: [] }],
+            tags: ['Course Modules'],
+            description: 'Update a course module', 
+            security: [{ bearerAuth: [] }],
             responses: {
                 '200': {
                     description: 'Module updated',
@@ -256,7 +266,9 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
     }, {
         params: t.Object({ courseSlug: t.String(), moduleId: t.String({ format: 'uuid' }) }),
         detail: {
-            summary: 'Delete a course module', tags: ['Course Modules'], security: [{ bearerAuth: [] }],
+            tags: ['Course Modules'],
+            description: 'Delete a course module', 
+            security: [{ bearerAuth: [] }],
             responses: {
                 '204': { description: 'Module deleted' },
                 ...commonErrorResponses
@@ -284,7 +296,9 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
         params: t.Object({ courseSlug: t.String(), moduleId: t.String({ format: 'uuid' }) }),
         body: lessonInputSchema,
         detail: {
-            summary: 'Create a new lesson in a module', tags: ['Lessons'], security: [{ bearerAuth: [] }],
+            tags: ['Lessons'],
+            description: 'Create a new lesson in a module', 
+            security: [{ bearerAuth: [] }],
             responses: {
                 '201': {
                     description: 'Lesson created',
@@ -315,7 +329,9 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
         params: t.Object({ courseSlug: t.String(), moduleId: t.String({ format: 'uuid' }), lessonId: t.String({ format: 'uuid' }) }),
         body: lessonUpdateSchema,
         detail: {
-            summary: 'Update a lesson', tags: ['Lessons'], security: [{ bearerAuth: [] }],
+            tags: ['Lessons'],
+            description: 'Update a lesson', 
+            security: [{ bearerAuth: [] }],
             responses: {
                 '200': {
                     description: 'Lesson updated',
@@ -345,7 +361,9 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
     }, {
         params: t.Object({ courseSlug: t.String(), moduleId: t.String({ format: 'uuid' }), lessonId: t.String({ format: 'uuid' }) }),
         detail: {
-            summary: 'Delete a lesson', tags: ['Lessons'], security: [{ bearerAuth: [] }],
+            tags: ['Lessons'],
+            description: 'Delete a lesson', 
+            security: [{ bearerAuth: [] }],
             responses: {
                 '204': { description: 'Lesson deleted' },
                 ...commonErrorResponses
@@ -369,7 +387,7 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
     }, {
         detail: {
             tags: ['Courses'],
-            summary: 'Get all published courses',
+            description: 'Get all published courses',
             responses: {
                 '200': {
                     description: 'List of courses',
@@ -402,7 +420,8 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
     }, {
         params: t.Object({ courseSlug: t.String() }),
         detail: {
-            summary: 'Get a specific course by slug', tags: ['Courses'],
+            tags: ['Courses'],
+            description: 'Get a specific course by slug',
             responses: {
                 '200': {
                     description: 'Course details',
@@ -437,7 +456,8 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
     }, {
         params: t.Object({ courseSlug: t.String() }),
         detail: {
-            summary: 'Get all modules for a course', tags: ['Course Modules'],
+            tags: ['Course Modules'],
+            description: 'Get all modules for a course',
             responses: {
                 '200': {
                     description: 'List of modules',
@@ -472,7 +492,8 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
     }, {
         params: t.Object({ courseSlug: t.String(), moduleId: t.String({ format: 'uuid' }) }),
         detail: {
-            summary: 'Get all lessons for a module', tags: ['Lessons'],
+            tags: ['Lessons'],
+            description: 'Get all lessons for a module',
             responses: {
                 '200': {
                     description: 'List of lessons',
@@ -517,7 +538,8 @@ export const courseRoutes = new Elysia({ prefix: '/courses' })
     }, {
         params: t.Object({ courseSlug: t.String(), moduleId: t.String({ format: 'uuid' }), lessonId: t.String({ format: 'uuid' }) }),
         detail: {
-            summary: 'Get a specific lesson by ID', tags: ['Lessons'],
+            tags: ['Lessons'],
+            description: 'Get a specific lesson by ID',
             responses: {
                 '200': {
                     description: 'Lesson details',
