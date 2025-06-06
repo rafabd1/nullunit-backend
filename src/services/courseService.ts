@@ -191,7 +191,7 @@ export class CourseService {
         // If not a restricted paid course view, or if user has access (owner/subscriber),
         // or if it's a draft accessed by owner/admin, return full course details.
         // Assuming CourseModuleService has a method to get full modules with their lessons
-        const fullModules = await CourseModuleService.getFullModulesWithLessonsByCourseId(courseBase.id, courseBase.slug, requestingMember);
+        const fullModules = await CourseModuleService.getFullModulesWithLessonsByCourseId(courseBase.id, courseBase.slug);
         
         return {
             ...courseBase,
@@ -265,7 +265,7 @@ export class CourseService {
 
         if (!hasMeaningfulUpdate && (tagNames === undefined || tagNames === null)) {
              // Pass requestingMemberId to ensure we can fetch the course even if it's a draft
-             const currentCourseData = await this.getCourseBySlug(courseSlug, requestingMemberId);
+             const currentCourseData = await this.getCourseBySlug(courseSlug, { id: requestingMemberId } as MemberWithPermissionAndSubscription);
              if (!currentCourseData) throw new NotFoundError('Course not found after no-op update check.');
              return currentCourseData;
         }
