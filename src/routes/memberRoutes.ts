@@ -57,6 +57,51 @@ export const memberRoutes = new Elysia({ prefix: '/members' })
             }
         }
     })
+    .get('/me', async (context: ElysiaBaseContext) => {
+        return auth(async ({ user, set }: AuthenticatedContext) => {
+            try {
+                const member = await MemberService.getById(user.id);
+                if (!member) {
+                    set.status = 404;
+                    return {
+                        error: 'Not found',
+                        message: 'Member profile not found for the authenticated user'
+                    };
+                }
+                return member;
+            } catch (error) {
+                set.status = 500;
+                return {
+                    error: 'Failed to fetch member',
+                    message: error instanceof Error ? error.message : 'Unknown error'
+                };
+            }
+        })(context as any);
+    }, {
+        detail: {
+            tags: ['members'],
+            description: 'Get the profile of the currently authenticated user',
+            security: [{ bearerAuth: [] }],
+            responses: {
+                '200': {
+                    description: 'Authenticated member\'s details',
+                    content: { 'application/json': { schema: memberSchema } }
+                },
+                '401': {
+                    description: 'Unauthorized',
+                    content: { 'application/json': { schema: errorSchema } }
+                },
+                '404': {
+                    description: 'Member profile not found',
+                    content: { 'application/json': { schema: errorSchema } }
+                },
+                '500': {
+                    description: 'Internal server error',
+                    content: { 'application/json': { schema: errorSchema } }
+                }
+            }
+        }
+    })
     .get('/:username', async (context: ElysiaBaseContext & { params: { username: string } }) => {
         const { params, set } = context;
         try {

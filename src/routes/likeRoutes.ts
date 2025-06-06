@@ -2,7 +2,7 @@ import { Elysia } from 'elysia';
 import { auth } from '../middlewares/auth';
 import { LikeService } from '../services/likeService';
 import { ContentType } from '../types/permissions';
-import { RouteContext, AuthenticatedContext } from '../types/routes';
+import { ElysiaBaseContext, AuthenticatedContext } from '../types/routes';
 import { supabase } from '../config/supabase';
 import { likeSchemas, userLikesResponseSchema } from '../schemas/likeSchemas';
 import { t } from 'elysia';
@@ -20,7 +20,7 @@ const validateContentType = (type: string): ContentType | null => {
  * @description Content existence validation helper
  */
 const validateContent = async (contentType: ContentType, contentId: string): Promise<boolean> => {
-    const table = contentType === ContentType.ARTICLE ? 'article_modules' : 'portfolio_projects';
+    const table = contentType === ContentType.ARTICLE ? 'articles' : 'portfolio_projects';
     const { count } = await supabase
         .from(table)
         .select('*', { count: 'exact', head: true })
@@ -30,7 +30,7 @@ const validateContent = async (contentType: ContentType, contentId: string): Pro
 };
 
 export const likeRoutes = new Elysia({ prefix: '/likes' })
-    .post('/:type/:id', async ({ params, request, set }: RouteContext & { params: { type: string; id: string } }) => {
+    .post('/:type/:id', async ({ params, request, set }: ElysiaBaseContext & { params: { type: string; id: string } }) => {
         return auth(async ({ user, set }: AuthenticatedContext) => {
             try {
                 const { type, id } = params;
@@ -106,7 +106,7 @@ export const likeRoutes = new Elysia({ prefix: '/likes' })
             }
         }
     })
-    .get('/:type/:id', async ({ params, set }: RouteContext & { params: { type: string; id: string } }) => {
+    .get('/:type/:id', async ({ params, set }: ElysiaBaseContext & { params: { type: string; id: string } }) => {
         try {
             const { type, id } = params;
             const contentType = validateContentType(type);
@@ -168,7 +168,7 @@ export const likeRoutes = new Elysia({ prefix: '/likes' })
             }
         }
     })
-    .get('/:type/:id/status', async ({ params, request, set }: RouteContext & { params: { type: string; id: string } }) => {
+    .get('/:type/:id/status', async ({ params, request, set }: ElysiaBaseContext & { params: { type: string; id: string } }) => {
         return auth(async ({ user, set }: AuthenticatedContext) => {
             try {
                 const { type, id } = params;
@@ -245,7 +245,7 @@ export const likeRoutes = new Elysia({ prefix: '/likes' })
         }
     })
     // Nova rota: Listar conteúdos curtidos pelo usuário autenticado
-    .get('/me/content', async ({ request, set }: RouteContext) => {
+    .get('/me/content', async ({ request, set }: ElysiaBaseContext) => {
         return auth(async ({ user, set }: AuthenticatedContext) => {
             try {
                 const likedContent = await LikeService.getUserLikedContent(user.id);
@@ -293,7 +293,7 @@ export const likeRoutes = new Elysia({ prefix: '/likes' })
         }
     })
     // Nova rota: Listar conteúdos curtidos por um usuário específico (público)
-    .get('/user/:username/content', async ({ params, set }: RouteContext & { params: { username: string } }) => {
+    .get('/user/:username/content', async ({ params, set }: ElysiaBaseContext & { params: { username: string } }) => {
         try {
             const { username } = params;
 

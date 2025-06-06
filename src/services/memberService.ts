@@ -35,6 +35,20 @@ export class MemberService {
     }
 
     /**
+     * @description Get member by ID
+     */
+    static async getById(id: string): Promise<MemberResponse | null> {
+        const { data, error } = await supabase
+            .from('members')
+            .select('*')
+            .eq('id', id)
+            .single();
+
+        if (error && error.code !== 'PGRST116') throw error;
+        return data;
+    }
+
+    /**
      * @description Create new member profile
      */    static async create(input: MemberDbInput): Promise<MemberResponse> {
         // Agora o create é interno, usado apenas pelo AuthService

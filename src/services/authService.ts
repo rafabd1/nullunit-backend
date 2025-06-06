@@ -252,26 +252,17 @@ export class AuthService {
     }
 
     /**
-     * @description Update user email with verification
+     * @description Inicia o processo de atualização do e-mail do usuário autenticado atualmente.
+     * Esta função é chamada pela rota PATCH /api/auth/user/email
      */
     static async updateEmail(newEmail: string): Promise<AuthResponse> {
-        //TODO: Create frontend route to handle email change confirmation and guide the user to confirm the invite in 
-        //      their new email
-        const { data: existingUsers, error: usersError } = await supabase.auth.admin.listUsers();
-        if (usersError) {
-            throw new Error('Failed to check email availability');
-        }
-
-        const emailExists = existingUsers.users.some(user => user.email === newEmail);
-        if (emailExists) {
-            throw new Error('Email already in use');
-        }
-
-        const { data, error } = await supabase.auth.updateUser({
-            email: newEmail
-        });
+        const { data, error } = await supabase.auth.updateUser(
+            { email: newEmail },
+            { emailRedirectTo: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/callback?type=email_change` }
+        );
 
         if (error) {
+            console.error("Email change initiation failed:", error);
             throw new Error('Failed to initiate email change process');
         }
 
