@@ -1,7 +1,7 @@
 import { Elysia, t } from 'elysia';
 import { cookie } from '@elysiajs/cookie';
 import { AuthService } from '../services/authService';
-import { authSchemas } from '../schemas/authSchemas';
+import { authSchemas, sessionSchema } from '../schemas/authSchemas';
 import { auth } from '../middlewares/auth';
 import { supabase } from '../config/supabase';
 import type { 
@@ -86,59 +86,73 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
             }
         }
     )
-    .post('/login', ({ body, set }: LoginContext) => 
-        handleLogin(body, set), {
-            body: authSchemas.login,
-            detail: {
-                tags: ['auth'],
-                description: 'Login with email and password',
-                responses: {
-                    '200': {
-                        description: 'Login successful',
-                        content: {
-                            'application/json': {
-                                schema: authSchemas.loginResponse
-                            }
+    .post('/login', async ({ body, set }: LoginContext) => {
+        try {
+            const sessionData = await AuthService.login(body.email, body.password);
+            return sessionData;
+        } catch (error) {
+            const err = error as Error;
+            set.status = 401;
+            return { error: err.message };
+        }
+    }, {
+        body: authSchemas.login,
+        detail: {
+            tags: ['auth'],
+            description: 'Login with email and password and get session tokens.',
+            responses: {
+                '200': {
+                    description: 'Login successful, session returned.',
+                    content: {
+                        'application/json': {
+                            schema: sessionSchema
                         }
-                    },
-                    '401': {
-                        description: 'Invalid credentials',
-                        content: {
-                            'application/json': {
-                                schema: authSchemas.errorResponse
-                            }
+                    }
+                },
+                '401': {
+                    description: 'Invalid credentials',
+                    content: {
+                        'application/json': {
+                            schema: authSchemas.errorResponse
                         }
                     }
                 }
             }
         }
-    )
-    .post('/logout', ({ set }: LogoutContext) => 
-        handleLogout(set), {
-            detail: {
-                tags: ['auth'],
-                description: 'Logout and clear authentication',
-                responses: {
-                    '200': {
-                        description: 'Logout successful',
-                        content: {
-                            'application/json': {
-                                schema: authSchemas.logoutResponse
-                            }
+    })
+    .post('/logout', async ({ set }: LogoutContext) => {
+        try {
+            const result = await AuthService.logout();
+            return { message: result.message };
+        } catch (error) {
+            const err = error as Error;
+            set.status = 500;
+            return { error: err.message };
+        }
+    }, {
+        detail: {
+            tags: ['auth'],
+            description: 'Logs out the user on the backend. Client should handle its own state.',
+            responses: {
+                '200': {
+                    description: 'Logout successful',
+                    content: {
+                        'application/json': {
+                            schema: authSchemas.logoutResponse
                         }
-                    },
-                    '500': {
-                        description: 'Server error',
-                        content: {
-                            'application/json': {
-                                schema: authSchemas.errorResponse
-                            }
+                    }
+                },
+                '500': {
+                    description: 'Server error',
+                    content: {
+                        'application/json': {
+                            schema: authSchemas.errorResponse
                         }
                     }
                 }
             }
         }
-    )
+    })
     .patch('/user/email', async (context: AuthContext) => {
         return auth(async ({ user, set, body }) => {
             try {
@@ -263,8 +277,7 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
             try {
                 await AuthService.deleteUser(user.id);
                 return { 
-                    message: 'User account deleted successfully',
-                    cookie: AuthService.getCookieString({}, true)
+                    message: 'User account deleted successfully'
                 };
             } catch (error) {
                 set.status = 400;
@@ -285,8 +298,7 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
                     content: {
                         'application/json': {
                             schema: t.Object({
-                                message: t.String(),
-                                cookie: t.String()
+                                message: t.String()
                             })
                         }
                     }
@@ -312,41 +324,27 @@ export const authRoutes = new Elysia({ prefix: '/auth' })
     });
 
 /**
- * @description Handles email verification and member account creation
+ * @description Handles email verification. The client will handle session creation on redirect.
  */
 async function handleVerifyEmail(query: Required<AuthContext>['query'], set: AuthContext['set']) {
-    let redirectTo = `${frontendUrl}/auth/error?error=unknown_error`; // Default error URL
-    let errorMessage: string | undefined = 'Unknown error';
     try {
         if (query.type !== 'signup') {
-            redirectTo = `${frontendUrl}/auth/error?error=invalid_type`;
-            errorMessage = 'Invalid type';
             set.status = 400;
-            return { redirectTo, error: errorMessage };
+            return { redirectTo: `${frontendUrl}/auth/error?error=invalid_type`, error: 'Invalid type' };
         }
 
         const result = await AuthService.verifyEmail(query.email, query.access_token);
 
         if (result.status === 'already_verified') {
-            redirectTo = `${frontendUrl}/auth/success?message=already_verified`;
-        } else {
-            redirectTo = `${frontendUrl}/auth/success`;
+            return { redirectTo: `${frontendUrl}/auth/success?message=already_verified` };
         }
+        
+        return { redirectTo: `${frontendUrl}/auth/success` };
 
-        if (result.accessToken) {
-            set.headers['Set-Cookie'] = AuthService.getCookieString({
-                access_token: result.accessToken
-            });
-        }
-
-        set.status = 200;
-        return { redirectTo };
     } catch (error) {
         const err = error as Error;
-        errorMessage = err.message;
-        redirectTo = `${frontendUrl}/auth/error?error=${encodeURIComponent(errorMessage)}`;
         set.status = 400;
-        return { redirectTo, error: errorMessage };
+        return { redirectTo: `${frontendUrl}/auth/error?error=${encodeURIComponent(err.message)}`, error: err.message };
     }
 }
 
@@ -359,42 +357,6 @@ async function handleSignup(body: SignupContext['body'], set: SignupContext['set
     } catch (error) {
         const err = error as Error;
         set.status = 400;
-        return { error: err.message };
-    }
-}
-
-/**
- * Handles user authentication
- */
-async function handleLogin(body: LoginContext['body'], set: LoginContext['set']) {
-    try {
-        const result = await AuthService.login(body.email, body.password);
-        if (result.cookie) {
-            set.headers['Set-Cookie'] = result.cookie;
-        }
-        return {
-            message: 'Login successful'
-        };
-    } catch (error) {
-        const err = error as Error;
-        set.status = 401;
-        return { error: err.message };
-    }
-}
-
-/**
- * Handles user logout
- */
-async function handleLogout(set: LogoutContext['set']) {
-    try {
-        const result = await AuthService.logout();
-        if (result.cookie) {
-            set.headers['Set-Cookie'] = result.cookie;
-        }
-        return { message: result.message };
-    } catch (error) {
-        const err = error as Error;
-        set.status = 500;
         return { error: err.message };
     }
 }

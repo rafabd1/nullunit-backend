@@ -1,4 +1,4 @@
-import { User } from '@supabase/supabase-js';
+import { User, Session } from '@supabase/supabase-js';
 import { Member } from './database';
 
 export interface AuthContext {
@@ -63,14 +63,10 @@ export interface SignupResponse extends AuthResponse {
     user: User;
 }
 
-export interface LoginResponse extends AuthResponse {
-    user: User;
-    session: {
-        access_token: string;
-        refresh_token: string;
-    };
-    cookie: string;
-}
+export type LoginResponse = {
+    access_token: string;
+    refresh_token: string;
+};
 
 export interface VerifyEmailResponse extends AuthResponse {
     status: 'verified' | 'already_verified';

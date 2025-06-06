@@ -3,32 +3,9 @@ import type { VerifyEmailResponse, SignupResponse, LoginResponse, AuthResponse }
 import { UserPermission } from '../types/permissions';
 
 /**
- * @description Configuration options for authentication cookies
- */
-const cookieOptions = {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'strict' as const : 'lax' as const,
-    path: '/',
-    maxAge: 7 * 24 * 60 * 60
-} as const;
-
-/**
  * @description Service layer for authentication management
  */
 export class AuthService {
-    /**
-     * @description Generate cookie string with authentication tokens
-     */
-    static getCookieString(tokens: { access_token?: string; refresh_token?: string } = {}, clear = false) {
-        const cookieValue = clear ? '' : JSON.stringify(tokens);
-        const options = clear ? { ...cookieOptions, maxAge: 0 } : cookieOptions;
-
-        return `auth=${cookieValue}; ${Object.entries(options)
-            .map(([key, value]) => `${key}=${value}`)
-            .join('; ')}`;
-    }
-
     /**
      * @description Verify user email and create member account
      */
@@ -135,41 +112,40 @@ export class AuthService {
     }
 
     /**
-     * @description Authenticate user and create session
+     * @description Authenticate user and return session tokens.
      */
-    static async login(email: string, password: string): Promise<LoginResponse> {
+    static async login(email: string, password: string): Promise<{ access_token: string, refresh_token: string }> {
         const { data, error } = await supabase.auth.signInWithPassword({
             email,
             password
         });
 
         if (error) throw error;
+        if (!data.session) throw new Error('Login failed, no session returned.');
 
-        const cookie = this.getCookieString({
-            access_token: data.session.access_token,
-            refresh_token: data.session.refresh_token
-        });
-
+        // Retorna apenas os tokens necessários para o frontend
         return {
-            user: data.user,
-            session: {
-                access_token: data.session.access_token,
-                refresh_token: data.session.refresh_token
-            },
-            cookie
+            access_token: data.session.access_token,
+            refresh_token: data.session.refresh_token,
         };
     }
 
     /**
-     * @description End user session and clear authentication
+     * @description End user session on Supabase. Frontend handles clearing state.
      */
-    static async logout() {
+    static async logout(): Promise<{ message: string }> {
+        // Esta função no backend agora é menos crítica,
+        // já que o signOut principal será feito no cliente.
+        // Pode ser mantida para invalidação de token do lado do servidor se necessário no futuro.
         const { error } = await supabase.auth.signOut();
-        if (error) throw error;
+        
+        if (error) {
+            console.error("Error signing out on backend:", error.message);
+            // Não joga erro para não quebrar o logout do cliente se ele falhar aqui
+        }
 
         return {
-            message: 'Logged out successfully',
-            cookie: this.getCookieString({}, true)
+            message: 'Logout signal processed by backend'
         };
     }
 

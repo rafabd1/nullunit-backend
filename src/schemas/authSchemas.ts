@@ -1,5 +1,11 @@
 import { t } from 'elysia';
 
+// Schema for the session tokens returned on login
+export const sessionSchema = t.Object({
+    access_token: t.String(),
+    refresh_token: t.String(),
+});
+
 export const authSchemas = {
     verifyQuery: t.Object({
         email: t.String({ 
