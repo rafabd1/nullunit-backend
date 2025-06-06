@@ -373,8 +373,7 @@ async function handleLogin(body: LoginContext['body'], set: LoginContext['set'])
             set.headers['Set-Cookie'] = result.cookie;
         }
         return {
-            user: result.user,
-            session: result.session
+            message: 'Login successful'
         };
     } catch (error) {
         const err = error as Error;
